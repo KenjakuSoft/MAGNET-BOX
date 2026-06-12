@@ -1,1 +1,1 @@
-# MAGENT-BOX
+# MAGNET-BOX
