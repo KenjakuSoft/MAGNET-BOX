@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MagnetBox · Settings</title>
+<style>
+  :root {
+    --bg: #0d1014; --bg-soft: #141920; --surface: #1a212b; --surface-2: #222c39;
+    --line: #2b3744; --text: #e6edf3; --muted: #8b97a6; --accent: #41d6a3;
+    --accent-dim: #1f6b54; --danger: #ff6b6b;
+    --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: radial-gradient(1100px 520px at 80% -10%, #16202b 0%, var(--bg) 55%); color: var(--text); font-family: var(--sans); }
+  header { display: flex; align-items: center; gap: 12px; padding: 20px 28px; }
+  header h1 { margin: 0; font-size: 20px; }
+  header h1 .box { color: var(--accent); }
+  header .sp { margin-left: auto; }
+  a.link { color: var(--accent); text-decoration: none; font-size: 13px; }
+  a.link:hover { text-decoration: underline; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 8px 22px 60px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px; margin-bottom: 16px; box-shadow: 0 12px 32px -22px #000; }
+  .card h2 { margin: 0 0 4px; font-size: 15px; }
+  .card .desc { margin: 0 0 16px; color: var(--muted); font-size: 12.5px; }
+  .ident { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
+  .avatar { width: 46px; height: 46px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), var(--accent-dim)); color: #06211a; display: grid; place-items: center; font-weight: 700; font-size: 20px; }
+  .ident .who { font-weight: 600; font-size: 16px; }
+  .role { font: 600 10.5px var(--mono); padding: 3px 9px; border-radius: 999px; text-transform: uppercase; letter-spacing: .4px; }
+  .role.admin { color: #06211a; background: var(--accent); }
+  .role.user { color: var(--muted); background: rgba(139,151,166,.16); }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 6px; }
+  input[type=text], input[type=password], input[type=number] {
+    width: 100%; background: #0c1117; color: var(--text); border: 1px solid var(--line);
+    border-radius: 9px; padding: 11px 13px; font: 14px var(--sans); outline: none;
+  }
+  input:focus { border-color: var(--accent-dim); box-shadow: 0 0 0 3px rgba(65,214,163,.12); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .toggle { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #20272f; }
+  .toggle:last-child { border-bottom: none; }
+  .toggle .t-label { font-size: 14px; }
+  .toggle .t-sub { color: var(--muted); font-size: 12px; }
+  .sw { position: relative; width: 42px; height: 24px; flex: none; }
+  .sw input { opacity: 0; width: 0; height: 0; }
+  .sw span { position: absolute; inset: 0; background: #2b3744; border-radius: 999px; transition: .15s; cursor: pointer; }
+  .sw span::before { content: ""; position: absolute; width: 18px; height: 18px; left: 3px; top: 3px; background: #cdd6df; border-radius: 50%; transition: .15s; }
+  .sw input:checked + span { background: var(--accent); }
+  .sw input:checked + span::before { transform: translateX(18px); background: #06211a; }
+  .btn { border: 1px solid var(--line); background: var(--surface-2); color: var(--text); padding: 10px 16px; border-radius: 9px; font: 600 13px var(--sans); cursor: pointer; }
+  .btn:hover { background: #2a3442; }
+  .btn.primary { background: var(--accent); color: #06211a; border-color: transparent; }
+  .btn.primary:hover { background: #54e6b3; }
+  .actions { margin-top: 16px; display: flex; gap: 10px; align-items: center; }
+  .hint { color: var(--muted); font-size: 12px; }
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: #14241c; color: #c9f5e3; border: 1px solid #265a45; padding: 11px 16px; border-radius: 10px; font-size: 13px; opacity: 0; transition: opacity .25s; }
+  .toast.show { opacity: 1; } .toast.bad { background: #2a1414; color: #ffd7d7; border-color: #5a2626; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Magnet<span class="box">Box</span> · Settings</h1>
+    <span class="sp"></span>
+    <a class="link" href="/">← back to app</a>
+  </header>
+  <div class="wrap">
+
+    <div class="card">
+      <div class="ident">
+        <div class="avatar" id="avatar">?</div>
+        <div>
+          <div class="who" id="who">…</div>
+          <span class="role" id="role">…</span>
+        </div>
+      </div>
+      <h2>Change password</h2>
+      <p class="desc">Update the password for your account.</p>
+      <label>Current password</label>
+      <input id="cur" type="password" autocomplete="current-password" />
+      <div class="grid2">
+        <div><label>New password</label><input id="new" type="password" autocomplete="new-password" /></div>
+        <div><label>Confirm new password</label><input id="conf" type="password" autocomplete="new-password" /></div>
+      </div>
+      <div class="actions"><button class="btn primary" id="pwBtn">Update password</button></div>
+    </div>
+
+    <div class="card">
+      <h2>Preferences</h2>
+      <p class="desc">Personal defaults for this browser when adding torrents.</p>
+      <div class="toggle">
+        <div><div class="t-label">Add paused by default</div><div class="t-sub">Pick files before downloading starts.</div></div>
+        <label class="sw"><input type="checkbox" id="prefPaused" /><span></span></label>
+      </div>
+      <div class="toggle">
+        <div><div class="t-label">Add public trackers by default</div><div class="t-sub">Helps find peers. Avoid for private-tracker torrents.</div></div>
+        <label class="sw"><input type="checkbox" id="prefTrackers" /><span></span></label>
+      </div>
+    </div>
+
+    <div class="card hidden" id="adminCard">
+      <h2>Speed limits <span class="role admin">admin</span></h2>
+      <p class="desc">Global download/upload caps for the whole instance. 0 = unlimited. Saved and re-applied on restart.</p>
+      <div class="grid2">
+        <div><label>Download limit (MiB/s)</label><input id="dl" type="number" min="0" step="0.5" placeholder="0 = unlimited" /></div>
+        <div><label>Upload limit (MiB/s)</label><input id="ul" type="number" min="0" step="0.5" placeholder="0 = unlimited" /></div>
+      </div>
+      <div class="actions">
+        <button class="btn primary" id="limBtn">Save limits</button>
+        <a class="link" href="/admin">Manage users →</a>
+      </div>
+    </div>
+
+  </div>
+  <div class="toast" id="toast"></div>
+
+<script>
+  const $ = s => document.querySelector(s);
+  const MIB = 1048576;
+  function toast(msg, bad) {
+    const t = $('#toast'); t.textContent = msg; t.className = 'toast show' + (bad ? ' bad' : '');
+    clearTimeout(t._h); t._h = setTimeout(() => t.className = 'toast', 3200);
+  }
+  function esc(s){ return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+  // Preferences (per-browser)
+  $('#prefPaused').checked = localStorage.getItem('mb_pref_paused') === '1';
+  $('#prefTrackers').checked = localStorage.getItem('mb_pref_trackers') === '1';
+  $('#prefPaused').addEventListener('change', e => { localStorage.setItem('mb_pref_paused', e.target.checked ? '1' : '0'); toast('Preference saved'); });
+  $('#prefTrackers').addEventListener('change', e => { localStorage.setItem('mb_pref_trackers', e.target.checked ? '1' : '0'); toast('Preference saved'); });
+
+  async function init() {
+    const r = await fetch('/api/me');
+    if (!r.ok) { location.href = '/login'; return; }
+    const me = await r.json();
+    $('#avatar').textContent = (me.username[0] || '?').toUpperCase();
+    $('#who').textContent = me.username;
+    $('#role').textContent = me.role; $('#role').className = 'role ' + me.role;
+    if (me.role === 'admin') { $('#adminCard').classList.remove('hidden'); loadLimits(); }
+  }
+
+  async function loadLimits() {
+    try {
+      const j = await (await fetch('/api/settings')).json();
+      $('#dl').value = j.download_bps ? (j.download_bps / MIB).toFixed(2).replace(/\.00$/, '') : '';
+      $('#ul').value = j.upload_bps ? (j.upload_bps / MIB).toFixed(2).replace(/\.00$/, '') : '';
+    } catch (e) {}
+  }
+
+  $('#pwBtn').addEventListener('click', async () => {
+    const cur = $('#cur').value, nw = $('#new').value, conf = $('#conf').value;
+    if (nw.length < 8) return toast('New password must be at least 8 characters', true);
+    if (nw !== conf) return toast('New passwords do not match', true);
+    try {
+      const r = await fetch('/api/me/password', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ old: cur, new: nw }) });
+      const j = await r.json();
+      if (!r.ok || j.ok === false) throw new Error(j.error || 'failed');
+      $('#cur').value = $('#new').value = $('#conf').value = '';
+      toast('Password updated');
+    } catch (e) { toast(e.message, true); }
+  });
+
+  $('#limBtn').addEventListener('click', async () => {
+    const toBps = v => { const n = parseFloat(v); return (!n || n <= 0) ? null : Math.round(n * MIB); };
+    try {
+      const r = await fetch('/api/settings', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ download_bps: toBps($('#dl').value), upload_bps: toBps($('#ul').value) }) });
+      const j = await r.json();
+      if (!r.ok || j.ok === false) throw new Error(j.error || 'failed');
+      toast('Speed limits saved'); loadLimits();
+    } catch (e) { toast(e.message, true); }
+  });
+
+  init();
+</script>
+</body>
+</html>

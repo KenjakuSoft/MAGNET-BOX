@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MagnetBox · Account</title>
+<style>
+  :root {
+    --bg: #0d1014; --bg-soft: #141920; --surface: #1a212b; --surface-2: #222c39;
+    --line: #2b3744; --text: #e6edf3; --muted: #8b97a6; --accent: #41d6a3;
+    --accent-dim: #1f6b54; --danger: #ff6b6b;
+    --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: radial-gradient(1100px 520px at 80% -10%, #16202b 0%, var(--bg) 55%); color: var(--text); font-family: var(--sans); }
+  header { display: flex; align-items: center; gap: 12px; padding: 20px 28px; }
+  header h1 { margin: 0; font-size: 20px; } header h1 .box { color: var(--accent); }
+  header .sp { margin-left: auto; }
+  a.link { color: var(--accent); text-decoration: none; font-size: 13px; } a.link:hover { text-decoration: underline; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 8px 22px 60px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px; margin-bottom: 16px; box-shadow: 0 12px 32px -22px #000; }
+  .card h2 { margin: 0 0 4px; font-size: 15px; } .card .desc { margin: 0 0 16px; color: var(--muted); font-size: 12.5px; }
+  .ident { display: flex; align-items: center; gap: 14px; }
+  .avatar { width: 46px; height: 46px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), var(--accent-dim)); color: #06211a; display: grid; place-items: center; font-weight: 700; font-size: 20px; }
+  .who { font-weight: 600; font-size: 16px; }
+  .role { font: 600 10.5px var(--mono); padding: 3px 9px; border-radius: 999px; text-transform: uppercase; }
+  .role.admin { color: #06211a; background: var(--accent); } .role.user { color: var(--muted); background: rgba(139,151,166,.16); }
+  .kv { display: flex; gap: 8px; color: var(--muted); font-size: 13px; margin-top: 4px; }
+  .tokenrow { display: flex; gap: 8px; align-items: center; }
+  .token { flex: 1; background: #0c1117; border: 1px solid var(--line); border-radius: 9px; padding: 11px 13px; font: 13px var(--mono); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .btn { border: 1px solid var(--line); background: var(--surface-2); color: var(--text); padding: 10px 15px; border-radius: 9px; font: 600 13px var(--sans); cursor: pointer; white-space: nowrap; }
+  .btn:hover { background: #2a3442; } .btn.primary { background: var(--accent); color: #06211a; border-color: transparent; } .btn.primary:hover { background: #54e6b3; }
+  .actions { margin-top: 14px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  pre { background: #0c1117; border: 1px solid var(--line); border-radius: 9px; padding: 12px 14px; overflow-x: auto; font: 12px var(--mono); color: #b8c2cf; }
+  .hint { color: var(--muted); font-size: 12px; }
+  .hidden { display: none; }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 6px; }
+  input { width: 100%; background: #0c1117; color: var(--text); border: 1px solid var(--line); border-radius: 9px; padding: 11px 13px; font: 14px var(--sans); outline: none; }
+  input:focus { border-color: var(--accent-dim); }
+  .setup { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-start; margin-top: 8px; }
+  .qrwrap { background: #fff; padding: 8px; border-radius: 10px; width: 180px; height: 180px; flex: none; }
+  .qrwrap svg { width: 100%; height: 100%; display: block; }
+  .setupinfo { flex: 1; min-width: 220px; }
+  .badge2 { font: 600 10.5px var(--mono); padding: 3px 9px; border-radius: 999px; }
+  .badge2.on { color: #06211a; background: var(--accent); } .badge2.off { color: var(--muted); background: rgba(139,151,166,.16); }
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: #14241c; color: #c9f5e3; border: 1px solid #265a45; padding: 11px 16px; border-radius: 10px; font-size: 13px; opacity: 0; transition: opacity .25s; }
+  .toast.show { opacity: 1; } .toast.bad { background: #2a1414; color: #ffd7d7; border-color: #5a2626; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Magnet<span class="box">Box</span> · Account</h1>
+    <span class="sp"></span>
+    <a class="link" href="/settings">Settings</a>
+    <a class="link" href="/" style="margin-left:14px">← back to app</a>
+  </header>
+  <div class="wrap">
+
+    <div class="card">
+      <div class="ident">
+        <div class="avatar" id="avatar">?</div>
+        <div>
+          <div class="who" id="who">…</div>
+          <div class="kv"><span class="role" id="role">…</span><span id="since"></span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Two-factor authentication <span class="badge2" id="twofaBadge"></span></h2>
+      <p class="desc">Add a second step at login using a code from an authenticator app (Authy, Google Authenticator, 1Password, …).</p>
+
+      <div id="twofaOff" class="hidden">
+        <button class="btn primary" id="enable2fa">Enable 2FA</button>
+      </div>
+
+      <div id="twofaOn" class="hidden">
+        <span class="hint">Two-factor is <b style="color:var(--accent)">enabled</b> · recovery codes left: <b id="recoLeft">–</b></span>
+        <div class="actions"><button class="btn" id="disable2fa">Disable 2FA</button></div>
+      </div>
+
+      <div id="twofaSetup" class="hidden">
+        <div class="setup">
+          <div class="qrwrap" id="qrwrap"></div>
+          <div class="setupinfo">
+            <p class="desc">Scan the QR, or enter this secret manually in your app:</p>
+            <div class="token" id="secret"></div>
+            <label for="confirmCode">Enter the 6-digit code to confirm</label>
+            <input id="confirmCode" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" />
+            <div class="actions">
+              <button class="btn primary" id="confirm2fa">Confirm</button>
+              <button class="btn ghost" id="cancel2fa">Cancel</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="recoBox" class="hidden">
+        <p class="desc" style="color:var(--accent)">✓ 2FA enabled. Save these one-time recovery codes — each works once if you lose your device:</p>
+        <pre id="recoCodes"></pre>
+        <button class="btn primary" id="recoDone">I've saved them</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>API token</h2>
+      <p class="desc">Use this token to drive MagnetBox from scripts or apps with the header <code>Authorization: Bearer &lt;token&gt;</code>. Keep it secret — it has full access to your account.</p>
+      <div class="tokenrow">
+        <div class="token" id="token">— no token —</div>
+        <button class="btn" id="copyBtn">Copy</button>
+        <button class="btn primary" id="genBtn">Generate</button>
+      </div>
+      <div class="actions"><span class="hint">Active sessions: <b id="sessions">–</b></span>
+        <button class="btn" id="logoutOthers">Sign out other sessions</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>API quickstart</h2>
+      <p class="desc">All endpoints accept the bearer token instead of a login cookie. Full reference: <a href="/docs" style="color:var(--accent)">/docs</a> · <a href="/api/openapi.json" style="color:var(--accent)">openapi.json</a></p>
+      <pre id="examples"># list torrents
+curl -H "Authorization: Bearer YOUR_TOKEN" \
+  http://HOST/api/torrents
+
+# add a magnet or direct link
+curl -H "Authorization: Bearer YOUR_TOKEN" -H "content-type: application/json" \
+  -d '{"source":"magnet:?xt=..."}' http://HOST/api/add</pre>
+    </div>
+
+  </div>
+  <div class="toast" id="toast"></div>
+
+<script>
+  const $ = s => document.querySelector(s);
+  let TOKEN = null;
+  function toast(m, bad){ const t=$('#toast'); t.textContent=m; t.className='toast show'+(bad?' bad':''); clearTimeout(t._h); t._h=setTimeout(()=>t.className='toast',3000); }
+  function esc(s){ return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+  function renderToken() {
+    $('#token').textContent = TOKEN || '— no token —';
+    $('#genBtn').textContent = TOKEN ? 'Regenerate' : 'Generate';
+    $('#copyBtn').style.display = TOKEN ? '' : 'none';
+  }
+
+  async function init() {
+    const r = await fetch('/api/account');
+    if (!r.ok) { location.href = '/login'; return; }
+    const a = await r.json();
+    $('#avatar').textContent = (a.username[0]||'?').toUpperCase();
+    $('#who').textContent = a.username;
+    $('#role').textContent = a.role; $('#role').className = 'role ' + a.role;
+    if (a.created) $('#since').textContent = 'member since ' + new Date(a.created*1000).toLocaleDateString();
+    $('#sessions').textContent = a.sessions;
+    TOKEN = a.api_token; renderToken();
+    render2fa(a);
+    $('#examples').textContent = $('#examples').textContent.replaceAll('http://HOST', location.origin);
+  }
+
+  function show2fa(which) {
+    const map = { off: 'twofaOff', on: 'twofaOn', setup: 'twofaSetup', reco: 'recoBox' };
+    for (const id of Object.values(map)) $('#' + id).classList.add('hidden');
+    $('#' + map[which]).classList.remove('hidden');
+  }
+  function render2fa(a) {
+    $('#twofaBadge').textContent = a.twofa ? 'on' : 'off';
+    $('#twofaBadge').className = 'badge2 ' + (a.twofa ? 'on' : 'off');
+    $('#recoLeft').textContent = a.recovery_left;
+    show2fa(a.twofa ? 'on' : 'off');
+  }
+  $('#enable2fa').addEventListener('click', async () => {
+    try {
+      const r = await fetch('/api/account/2fa/start', { method: 'POST' });
+      const j = await r.json();
+      if (!r.ok || j.ok === false) throw new Error(j.error || 'failed');
+      $('#qrwrap').innerHTML = j.qr;          // server-generated SVG (trusted)
+      $('#secret').textContent = j.secret;
+      $('#confirmCode').value = '';
+      show2fa('setup'); $('#confirmCode').focus();
+    } catch (e) { toast(e.message, true); }
+  });
+  $('#cancel2fa').addEventListener('click', () => init());
+  $('#confirm2fa').addEventListener('click', async () => {
+    try {
+      const r = await fetch('/api/account/2fa/confirm', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: $('#confirmCode').value.trim() }) });
+      const j = await r.json();
+      if (!r.ok || j.ok === false) throw new Error(j.error || 'failed');
+      $('#recoCodes').textContent = (j.recovery_codes || []).join('\n');
+      show2fa('reco');
+    } catch (e) { toast(e.message, true); }
+  });
+  $('#recoDone').addEventListener('click', () => init());
+  $('#disable2fa').addEventListener('click', async () => {
+    const pw = prompt('Enter your password to disable 2FA:');
+    if (!pw) return;
+    try {
+      const r = await fetch('/api/account/2fa/disable', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password: pw }) });
+      const j = await r.json();
+      if (!r.ok || j.ok === false) throw new Error(j.error || 'failed');
+      toast('2FA disabled'); init();
+    } catch (e) { toast(e.message, true); }
+  });
+
+  $('#genBtn').addEventListener('click', async () => {
+    if (TOKEN && !confirm('Regenerate the token? The old one stops working immediately.')) return;
+    try {
+      const r = await fetch('/api/account/token', { method: 'POST' });
+      const j = await r.json();
+      if (!r.ok || j.ok === false) throw new Error(j.error || 'failed');
+      TOKEN = j.token; renderToken(); toast('Token generated');
+    } catch (e) { toast(e.message, true); }
+  });
+  $('#copyBtn').addEventListener('click', () => { if (TOKEN) navigator.clipboard.writeText(TOKEN).then(()=>toast('Token copied'), ()=>toast(TOKEN)); });
+  $('#logoutOthers').addEventListener('click', async () => {
+    try { const r = await fetch('/api/account/logout-others', { method: 'POST' }); const j = await r.json();
+      if (!r.ok || j.ok === false) throw new Error(j.error || 'failed'); toast('Other sessions signed out'); init();
+    } catch (e) { toast(e.message, true); }
+  });
+  init();
+</script>
+</body>
+</html>

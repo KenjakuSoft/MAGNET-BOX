@@ -1,0 +1,15 @@
+# MagnetBox reverse proxy with automatic HTTPS.
+# 1. Point your domain's A record at the VPS IP first.
+# 2. Replace the domain below.
+# 3. Caddy fetches + renews a Let's Encrypt cert automatically.
+
+magnetbox.example.com {
+    encode zstd gzip
+
+    # Allow large .torrent uploads.
+    request_body {
+        max_size 20MB
+    }
+
+    reverse_proxy 127.0.0.1:8080
+}

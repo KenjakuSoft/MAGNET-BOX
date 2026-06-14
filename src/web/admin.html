@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MagnetBox · Admin Console</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d1014'/%3E%3Ctext x='16' y='22' font-size='18' font-family='sans-serif' font-weight='700' fill='%2341d6a3' text-anchor='middle'%3EM%3C/text%3E%3C/svg%3E" />
+<style>
+  :root {
+    --bg: #0d1014; --bg-soft: #141920; --surface: #1a212b; --surface-2: #222c39;
+    --line: #2b3744; --text: #e6edf3; --muted: #8b97a6; --accent: #41d6a3;
+    --accent-dim: #1f6b54; --danger: #ff6b6b; --warn: #ffcf5c;
+    --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans); }
+  .layout { display: grid; grid-template-columns: 230px 1fr; min-height: 100vh; }
+  .sidebar { background: linear-gradient(180deg, var(--bg-soft), var(--bg)); border-right: 1px solid var(--line); padding: 20px 14px; display: flex; flex-direction: column; gap: 4px; position: sticky; top: 0; height: 100vh; }
+  .brand { font-size: 19px; font-weight: 700; padding: 4px 10px 2px; }
+  .brand span { color: var(--accent); }
+  .brand .sub { font: 600 10px var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: 2px; margin-top: 2px; }
+  nav { display: flex; flex-direction: column; gap: 2px; margin-top: 16px; }
+  .navbtn { display: flex; align-items: center; gap: 10px; text-align: left; background: none; border: 0; color: var(--muted); font: 600 13.5px var(--sans); padding: 10px 12px; border-radius: 9px; cursor: pointer; }
+  .navbtn:hover { background: var(--surface); color: var(--text); }
+  .navbtn.active { background: var(--surface-2); color: var(--accent); }
+  .back { margin-top: auto; color: var(--muted); text-decoration: none; font-size: 12.5px; padding: 10px 12px; }
+  .back:hover { color: var(--accent); }
+  .content { padding: 26px 30px 60px; max-width: 1000px; }
+  h1 { margin: 0 0 4px; font-size: 22px; }
+  .lead { color: var(--muted); font-size: 13px; margin: 0 0 22px; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; }
+  .stat { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  .stat .k { color: var(--muted); font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .5px; }
+  .stat .v { font-size: 24px; font-weight: 700; margin-top: 6px; }
+  .stat .v.accent { color: var(--accent); }
+  .stat .s { color: var(--muted); font-size: 12px; margin-top: 3px; }
+
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; margin-top: 18px; }
+  .panel h2 { margin: 0 0 12px; font-size: 14px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .spacer { flex: 1; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid #20272f; font-size: 13px; vertical-align: middle; }
+  th { color: var(--muted); font: 600 10.5px var(--mono); text-transform: uppercase; letter-spacing: .4px; }
+  td.right, th.right { text-align: right; }
+  .bar { height: 5px; width: 120px; background: #0c1117; border-radius: 3px; overflow: hidden; display: inline-block; vertical-align: middle; }
+  .bar > i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent-dim), var(--accent)); }
+  .badge { font: 600 10px var(--mono); padding: 3px 8px; border-radius: 999px; text-transform: uppercase; }
+  .badge.live { color: var(--accent); background: rgba(65,214,163,.10); }
+  .badge.done { color: #06211a; background: var(--accent); }
+  .badge.paused, .badge.user { color: var(--muted); background: rgba(139,151,166,.14); }
+  .badge.error { color: var(--danger); background: rgba(255,107,107,.10); }
+  .badge.init, .badge.downloading { color: var(--warn); background: rgba(255,207,92,.10); }
+  .badge.admin { color: #06211a; background: var(--accent); }
+  .badge.you { color: var(--accent); background: rgba(65,214,163,.10); }
+  .mono { font-family: var(--mono); color: var(--muted); }
+
+  input, select { background: #0c1117; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; font: 13px var(--sans); outline: none; }
+  input:focus, select:focus { border-color: var(--accent-dim); }
+  .btn { border: 1px solid var(--line); background: var(--surface-2); color: var(--text); padding: 9px 14px; border-radius: 8px; font: 600 13px var(--sans); cursor: pointer; white-space: nowrap; }
+  .btn:hover { background: #2a3442; }
+  .btn.small { padding: 6px 10px; font-size: 12px; }
+  .btn.primary { background: var(--accent); color: #06211a; border-color: transparent; }
+  .btn.primary:hover { background: #54e6b3; }
+  .btn.ghost { background: transparent; }
+  .btn.danger { color: var(--muted); }
+  .btn.danger:hover { color: var(--danger); border-color: #5a2626; background: rgba(255,107,107,.08); }
+  .empty { color: var(--muted); padding: 20px 4px; font-size: 13px; }
+  .toggle { display: flex; align-items: center; justify-content: space-between; padding: 14px 0; border-bottom: 1px solid #20272f; }
+  .toggle:last-child { border-bottom: none; }
+  .toggle .t-label { font-size: 14px; font-weight: 600; }
+  .toggle .t-sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .sw { position: relative; width: 44px; height: 24px; flex: none; }
+  .sw input { opacity: 0; width: 0; height: 0; }
+  .sw span { position: absolute; inset: 0; background: #2b3744; border-radius: 999px; transition: .15s; cursor: pointer; }
+  .sw span::before { content: ""; position: absolute; width: 18px; height: 18px; left: 3px; top: 3px; background: #cdd6df; border-radius: 50%; transition: .15s; }
+  .sw input:checked + span { background: var(--accent); }
+  .sw input:checked + span::before { transform: translateX(20px); background: #06211a; }
+
+  .modal-backdrop { position: fixed; inset: 0; background: rgba(3,6,9,.6); display: none; place-items: center; z-index: 70; }
+  .modal-backdrop.open { display: grid; }
+  .modal { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 22px; width: min(420px, 92vw); }
+  .modal h3 { margin: 0 0 8px; font-size: 16px; }
+  .modal p { margin: 0 0 18px; color: var(--muted); font-size: 13.5px; line-height: 1.5; }
+  .modal .mrow { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+  .modal .btn.danger { background: rgba(255,107,107,.12); color: var(--danger); border-color: #5a2626; }
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: #14241c; color: #c9f5e3; border: 1px solid #265a45; padding: 11px 16px; border-radius: 10px; font-size: 13px; opacity: 0; transition: opacity .25s; z-index: 80; }
+  .toast.show { opacity: 1; } .toast.bad { background: #2a1414; color: #ffd7d7; border-color: #5a2626; }
+  .btn:focus-visible, .navbtn:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  @media (max-width: 760px) {
+    .layout { grid-template-columns: 1fr; }
+    .sidebar { position: static; height: auto; flex-direction: row; flex-wrap: wrap; }
+    nav { flex-direction: row; flex-wrap: wrap; margin-top: 0; }
+    .back { margin: 0; }
+    .content { padding: 18px 14px 50px; }
+  }
+</style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">Magnet<span>Box</span><div class="sub">admin</div></div>
+      <nav>
+        <button class="navbtn active" data-sec="overview">📊 Overview</button>
+        <button class="navbtn" data-sec="torrents">🧲 Torrents</button>
+        <button class="navbtn" data-sec="downloads">⤓ Downloads</button>
+        <button class="navbtn" data-sec="users">👥 Users</button>
+        <button class="navbtn" data-sec="invites">🎟 Invites</button>
+        <button class="navbtn" data-sec="sessions">🔐 Sessions</button>
+        <button class="navbtn" data-sec="activity">📜 Activity</button>
+        <button class="navbtn" data-sec="access">🚦 Access</button>
+        <button class="navbtn" data-sec="settings">⚙ Settings</button>
+      </nav>
+      <a class="back" href="/">← back to app</a>
+    </aside>
+
+    <main class="content">
+      <section data-sec="overview">
+        <h1>Overview</h1>
+        <p class="lead">Everything happening on this instance, live.</p>
+        <div class="grid" id="ov-cards"></div>
+        <div class="panel">
+          <h2>Quick actions</h2>
+          <div class="row">
+            <button class="btn" onclick="act('/api/admin/torrents/pause-all','All torrents paused')">⏸ Pause all torrents</button>
+            <button class="btn" onclick="act('/api/admin/torrents/resume-all','All torrents resumed')">▶ Resume all torrents</button>
+            <button class="btn danger" onclick="confirmAct('Clear completed downloads','Delete all finished direct downloads and their files?','/api/admin/downloads/clear-completed','Cleared completed downloads')">🧹 Clear completed downloads</button>
+          </div>
+        </div>
+      </section>
+
+      <section data-sec="torrents" hidden>
+        <h1>Torrents</h1>
+        <p class="lead">All torrents on the instance.</p>
+        <div class="row" style="margin-bottom:14px">
+          <button class="btn" onclick="act('/api/admin/torrents/pause-all','All torrents paused')">⏸ Pause all</button>
+          <button class="btn" onclick="act('/api/admin/torrents/resume-all','All torrents resumed')">▶ Resume all</button>
+        </div>
+        <div class="panel"><div id="tor-list" class="empty">Loading…</div></div>
+      </section>
+
+      <section data-sec="downloads" hidden>
+        <h1>Direct downloads</h1>
+        <p class="lead">Files fetched from http(s) links.</p>
+        <div class="row" style="margin-bottom:14px">
+          <button class="btn danger" onclick="confirmAct('Clear completed','Delete all finished downloads and their files?','/api/admin/downloads/clear-completed','Cleared completed downloads')">🧹 Clear completed</button>
+        </div>
+        <div class="panel"><div id="dl-list" class="empty">Loading…</div></div>
+      </section>
+
+      <section data-sec="users" hidden>
+        <h1>Users</h1>
+        <p class="lead">Accounts that can sign in.</p>
+        <div class="panel"><table><thead><tr><th>Username</th><th>Email</th><th>Role</th><th>Last seen</th><th>IP</th><th>Data</th><th>Status</th><th class="right"></th></tr></thead><tbody id="user-rows"></tbody></table></div>
+        <div class="panel">
+          <h2>Add user</h2>
+          <div class="row">
+            <input id="nu" placeholder="username" autocomplete="off" />
+            <input id="np" type="password" placeholder="password (min 8)" autocomplete="new-password" />
+            <select id="nr"><option value="user">user</option><option value="admin">admin</option></select>
+            <button class="btn primary" id="addUser">Create</button>
+          </div>
+        </div>
+      </section>
+
+      <section data-sec="sessions" hidden>
+        <h1>Sessions</h1>
+        <p class="lead">Every active login. Revoke any to sign that device out.</p>
+        <div class="row" style="margin-bottom:14px">
+          <button class="btn danger" onclick="confirmAct('Revoke other sessions','Sign out every session except this one?','/api/admin/sessions/revoke-others','Other sessions revoked')">⎋ Revoke all others</button>
+        </div>
+        <div class="panel"><table><thead><tr><th>User</th><th>Role</th><th>Signed in</th><th>Expires</th><th class="right"></th></tr></thead><tbody id="sess-rows"></tbody></table></div>
+      </section>
+
+      <section data-sec="activity" hidden>
+        <h1>Activity log</h1>
+        <p class="lead">Recent state-changing actions across the instance.</p>
+        <div class="panel"><table><thead><tr><th>When</th><th>User</th><th>Action</th></tr></thead><tbody id="act-rows"></tbody></table></div>
+      </section>
+
+      <section data-sec="invites" hidden>
+        <h1>Invites</h1>
+        <p class="lead">Closed registration — share a code during an open window and it lets someone register.</p>
+        <div class="panel">
+          <h2>Create invite</h2>
+          <div class="row">
+            <div><div class="k mono" style="margin-bottom:6px">Max uses (0 = ∞)</div><input id="iv-uses" type="number" min="0" value="1" style="width:120px" /></div>
+            <div><div class="k mono" style="margin-bottom:6px">Expires (days, 0 = never)</div><input id="iv-days" type="number" min="0" value="0" style="width:150px" /></div>
+            <div style="flex:1;min-width:160px"><div class="k mono" style="margin-bottom:6px">Note</div><input id="iv-note" placeholder="who's it for?" style="width:100%" /></div>
+            <button class="btn primary" id="mkInvite" style="align-self:flex-end">Generate code</button>
+          </div>
+        </div>
+        <div class="panel"><table><thead><tr><th>Code</th><th>Uses</th><th>Expires</th><th>Note</th><th>Status</th><th class="right"></th></tr></thead><tbody id="inv-rows"></tbody></table></div>
+      </section>
+
+      <section data-sec="access" hidden>
+        <h1>Access</h1>
+        <p class="lead">Open registration during an occasional window (Demonoid-style), then close it again. Maintenance mode locks everyone out except admins.</p>
+        <div class="panel">
+          <div class="toggle">
+            <div><div class="t-label">Registration open</div><div class="t-sub">When on, people with a valid invite code can create an account at <span class="mono">/register</span>.</div></div>
+            <label class="sw"><input type="checkbox" id="cfg-reg" /><span></span></label>
+          </div>
+          <div class="toggle">
+            <div><div class="t-label">Maintenance mode</div><div class="t-sub">Blocks all non-admin access with a “down for maintenance” notice.</div></div>
+            <label class="sw"><input type="checkbox" id="cfg-maint" /><span></span></label>
+          </div>
+          <div class="toggle">
+            <div><div class="t-label">Max concurrent downloads / user</div><div class="t-sub">Cap on simultaneous direct-link downloads per user (0 = unlimited).</div></div>
+            <input id="cfg-conc" type="number" min="0" style="width:90px" />
+          </div>
+          <div class="toggle">
+            <div><div class="t-label">Auto-delete after (days)</div><div class="t-sub">Remove torrents &amp; downloads (and their files) older than this, to free space. 0 = keep forever. Runs hourly.</div></div>
+            <input id="cfg-ret" type="number" min="0" style="width:90px" />
+          </div>
+        </div>
+        <div class="panel">
+          <h2>Cleanup</h2>
+          <p class="lead" style="margin:0 0 12px">Apply the retention policy right now instead of waiting for the hourly sweep.</p>
+          <button class="btn" id="cleanupNow">Run cleanup now</button>
+        </div>
+      </section>
+
+      <section data-sec="settings" hidden>
+        <h1>Settings</h1>
+        <p class="lead">Global controls for the whole instance.</p>
+        <div class="panel">
+          <h2>Speed limits</h2>
+          <p class="lead" style="margin:0 0 12px">Caps apply to all transfers. 0 = unlimited. Saved and re-applied on restart.</p>
+          <div class="row">
+            <div><div class="k mono" style="margin-bottom:6px">Download MiB/s</div><input id="dl" type="number" min="0" step="0.5" placeholder="0 = unlimited" /></div>
+            <div><div class="k mono" style="margin-bottom:6px">Upload MiB/s</div><input id="ul" type="number" min="0" step="0.5" placeholder="0 = unlimited" /></div>
+            <button class="btn primary" id="saveLimits" style="align-self:flex-end">Save limits</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal-backdrop" id="modal"><div class="modal" id="modalBox"></div></div>
+  <div class="toast" id="toast"></div>
+
+<script>
+  const $ = s => document.querySelector(s);
+  const $$ = s => document.querySelectorAll(s);
+  let CUR = 'overview';
+
+  function toast(m, bad) { const t = $('#toast'); t.textContent = m; t.className = 'toast show' + (bad ? ' bad' : ''); clearTimeout(t._h); t._h = setTimeout(() => t.className = 'toast', 3000); }
+  function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+  function human(b) { if (b == null) return '–'; const u = ['B', 'KB', 'MB', 'GB', 'TB']; let i = 0, v = b; while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; } return i === 0 ? b + ' B' : v.toFixed(2) + ' ' + u[i]; }
+  function dur(s) { s = Math.round(s); const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60); if (d) return `${d}d ${h}h`; if (h) return `${h}h ${m}m`; if (m) return `${m}m ${s % 60}s`; return s + 's'; }
+  function date(u) { return u ? new Date(u * 1000).toLocaleString() : '—'; }
+
+  function modal({ title, message, buttons }) {
+    return new Promise(resolve => {
+      const box = $('#modalBox');
+      box.innerHTML = `<h3>${esc(title)}</h3><p>${esc(message)}</p><div class="mrow"></div>`;
+      const row = box.querySelector('.mrow'); let done = false;
+      const fin = v => { if (done) return; done = true; $('#modal').classList.remove('open'); resolve(v); };
+      buttons.forEach(b => { const el = document.createElement('button'); el.className = 'btn ' + (b.kind || ''); el.textContent = b.label; el.onclick = () => fin(b.value); row.appendChild(el); });
+      $('#modal').classList.add('open');
+      $('#modal').onclick = e => { if (e.target.id === 'modal') fin(null); };
+    });
+  }
+
+  async function postJson(url) { const r = await fetch(url, { method: 'POST' }); const j = await r.json().catch(() => ({})); if (!r.ok || j.ok === false) throw new Error(j.error || 'request failed'); return j; }
+  async function act(url, ok) { try { await postJson(url); toast(ok); load(CUR); } catch (e) { toast(e.message, true); } }
+  async function confirmAct(title, message, url, ok) {
+    const c = await modal({ title, message, buttons: [{ label: 'Cancel', value: null, kind: 'ghost' }, { label: 'Confirm', value: 'y', kind: 'danger' }] });
+    if (c) act(url, ok);
+  }
+
+  // ---- section switching ----
+  function show(sec) {
+    CUR = sec;
+    $$('.navbtn').forEach(b => b.classList.toggle('active', b.dataset.sec === sec));
+    $$('main section').forEach(s => s.hidden = s.dataset.sec !== sec);
+    load(sec);
+  }
+  $$('.navbtn').forEach(b => b.addEventListener('click', () => show(b.dataset.sec)));
+
+  function load(sec) {
+    if (sec === 'overview') loadOverview();
+    else if (sec === 'torrents') loadTorrents();
+    else if (sec === 'downloads') loadDownloads();
+    else if (sec === 'users') loadUsers();
+    else if (sec === 'invites') loadInvites();
+    else if (sec === 'sessions') loadSessions();
+    else if (sec === 'activity') loadActivity();
+    else if (sec === 'access') loadAccess();
+    else if (sec === 'settings') loadSettings();
+  }
+
+  // ---- overview ----
+  async function loadOverview() {
+    const o = await (await fetch('/api/admin/overview')).json();
+    const e = o.engine || {};
+    const d = o.downloads || {};
+    const h = o.host || {};
+    const card = (k, v, s, accent) => `<div class="stat"><div class="k">${k}</div><div class="v${accent ? ' accent' : ''}">${v}</div>${s ? `<div class="s">${s}</div>` : ''}</div>`;
+    const pct = (a, b) => b ? Math.round(a / b * 100) + '%' : '–';
+    $('#ov-cards').innerHTML =
+      card('Download speed', e.download_mbps != null ? e.download_mbps.toFixed(1) + ' MiB/s' : '–', `${e.active || 0} active`, true) +
+      card('Torrents', e.torrents || 0, `${e.finished || 0} done · ${e.paused || 0} paused`) +
+      card('Direct downloads', d.total || 0, `${d.running || 0} running · ${d.done || 0} done`) +
+      card('Stored', human(o.stored_bytes), `${human(e.uploaded_bytes)} uploaded`) +
+      card('Users', o.users, `${o.sessions} active session${o.sessions === 1 ? '' : 's'}`) +
+      card('Uptime', dur(o.uptime_secs), 'v' + o.version) +
+      card('CPU', (h.cpu != null ? h.cpu.toFixed(0) : '–') + '%', 'host load', true) +
+      card('Memory', pct(h.mem_used, h.mem_total), `${human(h.mem_used)} / ${human(h.mem_total)}`) +
+      card('Disk', h.disk_total ? pct(h.disk_used, h.disk_total) : '–', `${human(h.disk_used)} / ${human(h.disk_total)} used`);
+  }
+
+  // ---- torrents ----
+  async function loadTorrents() {
+    const j = await (await fetch('/api/torrents')).json();
+    const list = j.torrents || [];
+    if (!list.length) { $('#tor-list').innerHTML = '<div class="empty">No torrents.</div>'; return; }
+    $('#tor-list').innerHTML = `<table><thead><tr><th>Name</th><th>State</th><th>Progress</th><th class="right">Speed</th><th class="right"></th></tr></thead><tbody>` +
+      list.map(t => {
+        const pct = t.total_bytes ? Math.floor(t.progress_bytes / t.total_bytes * 100) : 0;
+        const cls = t.error ? 'error' : t.finished ? 'done' : t.paused ? 'paused' : (t.state || '').toLowerCase().includes('live') ? 'live' : 'init';
+        const lbl = t.error ? 'error' : t.finished ? 'done' : t.paused ? 'paused' : (t.state || 'init');
+        const ctrl = t.paused ? `<button class="btn small ghost" onclick="trAct(${t.id},'resume')">Resume</button>` : `<button class="btn small ghost" onclick="trAct(${t.id},'pause')">Pause</button>`;
+        return `<tr><td>${esc(t.name)}</td><td><span class="badge ${cls}">${esc(lbl)}</span></td>
+          <td><span class="bar"><i style="width:${pct}%"></i></span> <span class="mono">${pct}%</span></td>
+          <td class="right mono">${t.finished ? '' : (t.download_mbps || 0).toFixed(1) + ' MiB/s'}</td>
+          <td class="right">${ctrl} <button class="btn small danger" onclick="trDel(${t.id})">Delete</button></td></tr>`;
+      }).join('') + '</tbody></table>';
+  }
+  async function trAct(id, a) { try { await postJson(`/api/torrents/${id}/${a}`); loadTorrents(); } catch (e) { toast(e.message, true); } }
+  async function trDel(id) {
+    const c = await modal({ title: 'Delete torrent', message: 'Remove this torrent? Files on disk are deleted too.', buttons: [{ label: 'Cancel', value: null, kind: 'ghost' }, { label: 'Delete', value: 'y', kind: 'danger' }] });
+    if (!c) return;
+    try { await postJson(`/api/torrents/${id}/delete?files=true`); toast('Torrent deleted'); loadTorrents(); } catch (e) { toast(e.message, true); }
+  }
+
+  // ---- downloads ----
+  async function loadDownloads() {
+    const j = await (await fetch('/api/links')).json();
+    const list = j.downloads || [];
+    if (!list.length) { $('#dl-list').innerHTML = '<div class="empty">No direct downloads.</div>'; return; }
+    $('#dl-list').innerHTML = `<table><thead><tr><th>File</th><th>Owner</th><th>Status</th><th>Progress</th><th class="right"></th></tr></thead><tbody>` +
+      list.map(d => {
+        const pct = d.total ? Math.floor(d.downloaded / d.total * 100) : (d.status === 'done' ? 100 : 0);
+        return `<tr><td>${esc(d.filename)}</td><td class="mono">${esc(d.owner || '—')}</td><td><span class="badge ${d.status}">${esc(d.status)}</span></td>
+          <td><span class="bar"><i style="width:${pct}%"></i></span> <span class="mono">${human(d.downloaded)}</span></td>
+          <td class="right"><a class="btn small ghost" href="/dl/${d.id}">Open</a> <button class="btn small danger" onclick="dlDel(${d.id})">Delete</button></td></tr>`;
+      }).join('') + '</tbody></table>';
+  }
+  async function dlDel(id) {
+    const c = await modal({ title: 'Delete download', message: 'Remove this download and its file?', buttons: [{ label: 'Cancel', value: null, kind: 'ghost' }, { label: 'Delete', value: 'y', kind: 'danger' }] });
+    if (!c) return;
+    try { await postJson(`/api/links/${id}/delete?files=true`); toast('Download deleted'); loadDownloads(); } catch (e) { toast(e.message, true); }
+  }
+
+  // ---- users ----
+  async function loadUsers() {
+    const r = await fetch('/api/users'); if (r.status === 403) { location.href = '/'; return; }
+    const j = await r.json();
+    $('#user-rows').innerHTML = (j.users || []).map(u => {
+      const status = u.disabled ? '<span class="badge error">banned</span>' : '<span class="badge done">active</span>';
+      const ban = u.disabled
+        ? `<button class="btn small" onclick="setBan('${esc(u.username)}',false)">Unban</button>`
+        : (u.role === 'admin' ? '' : `<button class="btn small danger" onclick="setBan('${esc(u.username)}',true)">Ban</button>`);
+      return `<tr>
+        <td>${esc(u.username)}</td>
+        <td class="mono">${u.email ? esc(u.email) : '—'}</td>
+        <td><span class="badge ${u.role}">${u.role}</span></td>
+        <td class="mono">${u.last_seen ? date(u.last_seen) : 'never'}</td>
+        <td class="mono">${u.last_ip ? esc(u.last_ip) : '—'}</td>
+        <td class="mono">${human(u.bytes_served || 0)}</td>
+        <td>${status}</td>
+        <td class="right">${ban}
+          <button class="btn small" onclick="resetKey('${esc(u.username)}')">Reset key</button>
+          <button class="btn small" onclick="resetPw('${esc(u.username)}')">Reset pw</button>
+          <button class="btn small danger" onclick="userDel('${esc(u.username)}')">Delete</button></td></tr>`;
+    }).join('');
+  }
+  async function setBan(u, disabled) {
+    if (disabled) {
+      const c = await modal({ title: 'Ban user', message: `Disable “${u}”? They'll be signed out and can't log in.`, buttons: [{ label: 'Cancel', value: null, kind: 'ghost' }, { label: 'Ban', value: 'y', kind: 'danger' }] });
+      if (!c) return;
+    }
+    try { const r = await fetch(`/api/users/${encodeURIComponent(u)}/disabled`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ disabled }) }); const j = await r.json(); if (!r.ok || j.ok === false) throw new Error(j.error || 'failed'); toast(disabled ? 'User banned' : 'User unbanned'); loadUsers(); } catch (e) { toast(e.message, true); }
+  }
+  async function resetKey(u) {
+    const c = await modal({ title: 'Reset API token', message: `Rotate “${u}”'s API token? Their old token stops working immediately.`, buttons: [{ label: 'Cancel', value: null, kind: 'ghost' }, { label: 'Reset', value: 'y', kind: 'danger' }] });
+    if (!c) return;
+    try { await postJson(`/api/users/${encodeURIComponent(u)}/token`); toast('API token reset'); } catch (e) { toast(e.message, true); }
+  }
+
+  // ---- invites ----
+  async function loadInvites() {
+    const j = await (await fetch('/api/admin/invites')).json();
+    const list = j.invites || [];
+    $('#inv-rows').innerHTML = list.length ? list.map(i => {
+      const uses = i.max_uses === 0 ? `${i.used} / ∞` : `${i.used} / ${i.max_uses}`;
+      const exp = i.expires ? date(i.expires) : 'never';
+      const st = i.active ? '<span class="badge done">active</span>' : '<span class="badge error">used up</span>';
+      return `<tr><td class="mono">${esc(i.code)}</td><td class="mono">${uses}</td><td class="mono">${exp}</td><td>${esc(i.note || '—')}</td><td>${st}</td>
+        <td class="right"><button class="btn small" onclick="copyInvite('${esc(i.code)}')">Copy link</button>
+        <button class="btn small danger" onclick="invDel('${esc(i.code)}')">Delete</button></td></tr>`;
+    }).join('') : '<tr><td colspan="6" class="empty">No invite codes yet. Generate one above.</td></tr>';
+  }
+  function copyInvite(code) {
+    const url = `${location.origin}/register`;
+    navigator.clipboard.writeText(`${url}  (code: ${code})`).then(() => toast('Invite link + code copied'), () => toast(code));
+  }
+  async function invDel(code) {
+    const c = await modal({ title: 'Delete invite', message: 'Delete this invite code?', buttons: [{ label: 'Cancel', value: null, kind: 'ghost' }, { label: 'Delete', value: 'y', kind: 'danger' }] });
+    if (!c) return;
+    try { await postJson(`/api/admin/invites/${encodeURIComponent(code)}/delete`); toast('Invite deleted'); loadInvites(); } catch (e) { toast(e.message, true); }
+  }
+  $('#mkInvite').addEventListener('click', async () => {
+    try {
+      const r = await fetch('/api/admin/invites', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ max_uses: parseInt($('#iv-uses').value) || 0, expires_days: parseInt($('#iv-days').value) || 0, note: $('#iv-note').value }) });
+      const j = await r.json(); if (!r.ok || j.ok === false) throw new Error(j.error || 'failed');
+      $('#iv-note').value = ''; toast('Invite created: ' + j.code); loadInvites();
+    } catch (e) { toast(e.message, true); }
+  });
+
+  // ---- access (registration / maintenance) ----
+  async function loadAccess() {
+    const c = await (await fetch('/api/admin/config')).json();
+    $('#cfg-reg').checked = !!c.registration_open;
+    $('#cfg-maint').checked = !!c.maintenance;
+    $('#cfg-conc').value = c.max_concurrent_downloads ?? 0;
+    $('#cfg-ret').value = c.retention_days ?? 0;
+  }
+  async function saveAccess() {
+    try {
+      const r = await fetch('/api/admin/config', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ registration_open: $('#cfg-reg').checked, maintenance: $('#cfg-maint').checked, max_concurrent_downloads: parseInt($('#cfg-conc').value) || 0, retention_days: parseInt($('#cfg-ret').value) || 0 }) });
+      const j = await r.json(); if (!r.ok || j.ok === false) throw new Error(j.error || 'failed'); toast('Saved');
+    } catch (e) { toast(e.message, true); loadAccess(); }
+  }
+  $('#cfg-reg').addEventListener('change', saveAccess);
+  $('#cfg-maint').addEventListener('change', saveAccess);
+  $('#cfg-conc').addEventListener('change', saveAccess);
+  $('#cfg-ret').addEventListener('change', saveAccess);
+  $('#cleanupNow').addEventListener('click', async () => {
+    try {
+      const j = await postJson('/api/admin/cleanup');
+      toast(j.note ? j.note : `Removed ${j.torrents} torrents + ${j.downloads} downloads`);
+    } catch (e) { toast(e.message, true); }
+  });
+  $('#addUser').addEventListener('click', async () => {
+    try {
+      const r = await fetch('/api/users', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: $('#nu').value.trim(), password: $('#np').value, role: $('#nr').value }) });
+      const j = await r.json(); if (!r.ok || j.ok === false) throw new Error(j.error || 'failed');
+      $('#nu').value = ''; $('#np').value = ''; toast('User created'); loadUsers();
+    } catch (e) { toast(e.message, true); }
+  });
+  async function userDel(u) {
+    const c = await modal({ title: 'Delete user', message: `Delete user “${u}”?`, buttons: [{ label: 'Cancel', value: null, kind: 'ghost' }, { label: 'Delete', value: 'y', kind: 'danger' }] });
+    if (!c) return;
+    try { await postJson(`/api/users/${encodeURIComponent(u)}/delete`); toast('User deleted'); loadUsers(); } catch (e) { toast(e.message, true); }
+  }
+  async function resetPw(u) {
+    const p = prompt(`New password for “${u}” (min 8):`); if (!p) return;
+    try { const r = await fetch(`/api/users/${encodeURIComponent(u)}/password`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password: p }) }); const j = await r.json(); if (!r.ok || j.ok === false) throw new Error(j.error || 'failed'); toast('Password reset'); } catch (e) { toast(e.message, true); }
+  }
+
+  // ---- sessions ----
+  async function loadSessions() {
+    const j = await (await fetch('/api/admin/sessions')).json();
+    const list = j.sessions || [];
+    $('#sess-rows').innerHTML = list.length ? list.map(s =>
+      `<tr><td>${esc(s.user)} ${s.current ? '<span class="badge you">this device</span>' : ''}</td>
+       <td><span class="badge ${s.role}">${s.role}</span></td><td class="mono">${date(s.created)}</td><td class="mono">${date(s.expires)}</td>
+       <td class="right">${s.current ? '' : `<button class="btn small danger" onclick="revoke('${s.id}')">Revoke</button>`}</td></tr>`).join('')
+      : '<tr><td colspan="5" class="empty">No active sessions.</td></tr>';
+  }
+  async function revoke(sid) { try { await postJson(`/api/admin/sessions/${sid}/revoke`); toast('Session revoked'); loadSessions(); } catch (e) { toast(e.message, true); } }
+
+  // ---- activity ----
+  async function loadActivity() {
+    const j = await (await fetch('/api/admin/activity')).json();
+    const ev = j.events || [];
+    $('#act-rows').innerHTML = ev.length ? ev.map(e =>
+      `<tr><td class="mono">${date(e.time)}</td><td>${esc(e.user)}</td><td class="mono">${esc(e.action)}</td></tr>`).join('')
+      : '<tr><td colspan="3" class="empty">No activity yet.</td></tr>';
+  }
+
+  // ---- settings ----
+  const MIB = 1048576;
+  async function loadSettings() {
+    const j = await (await fetch('/api/settings')).json();
+    $('#dl').value = j.download_bps ? +(j.download_bps / MIB).toFixed(2) : '';
+    $('#ul').value = j.upload_bps ? +(j.upload_bps / MIB).toFixed(2) : '';
+  }
+  $('#saveLimits').addEventListener('click', async () => {
+    const toBps = v => { const n = parseFloat(v); return (!n || n <= 0) ? null : Math.round(n * MIB); };
+    try {
+      const r = await fetch('/api/settings', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ download_bps: toBps($('#dl').value), upload_bps: toBps($('#ul').value) }) });
+      const j = await r.json(); if (!r.ok || j.ok === false) throw new Error(j.error || 'failed');
+      toast('Speed limits saved'); loadSettings();
+    } catch (e) { toast(e.message, true); }
+  });
+
+  // live refresh of the active section
+  show('overview');
+  setInterval(() => { if (['overview', 'torrents', 'downloads', 'sessions'].includes(CUR)) load(CUR); }, 2500);
+</script>
+</body>
+</html>

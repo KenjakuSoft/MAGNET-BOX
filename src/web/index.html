@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MagnetBox</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d1014'/%3E%3Ctext x='16' y='22' font-size='18' font-family='sans-serif' font-weight='700' fill='%2341d6a3' text-anchor='middle'%3EM%3C/text%3E%3C/svg%3E" />
+<style>
+  :root {
+    --bg:        #0d1014;
+    --bg-soft:   #141920;
+    --surface:   #1a212b;
+    --surface-2: #222c39;
+    --line:      #2b3744;
+    --text:      #e6edf3;
+    --muted:     #8b97a6;
+    --accent:    #41d6a3;
+    --accent-dim:#1f6b54;
+    --danger:    #ff6b6b;
+    --warn:      #ffcf5c;
+    --radius:    12px;
+    --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: radial-gradient(1200px 600px at 80% -10%, #16202b 0%, var(--bg) 55%);
+    color: var(--text); font-family: var(--sans); min-height: 100vh;
+  }
+  header {
+    display: flex; align-items: baseline; gap: 14px; padding: 22px 28px 6px;
+  }
+  header h1 { margin: 0; font-size: 22px; letter-spacing: .3px; }
+  header h1 .box { color: var(--accent); }
+  header .tag {
+    font: 600 11px/1 var(--mono); color: var(--accent); border: 1px solid var(--accent-dim);
+    padding: 4px 8px; border-radius: 999px; background: rgba(65,214,163,.07);
+  }
+  header .note { margin-left: auto; color: var(--muted); font-size: 12.5px; }
+  header .usermenu { margin-left: auto; position: relative; }
+  header .userbtn {
+    display: flex; align-items: center; gap: 9px; background: var(--surface);
+    border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px 5px 5px;
+    cursor: pointer; color: var(--text); font: inherit; transition: border-color .15s;
+  }
+  header .userbtn:hover { border-color: #3a4a5c; }
+  header .avatar {
+    width: 28px; height: 28px; border-radius: 50%; flex: none;
+    background: linear-gradient(135deg, var(--accent), var(--accent-dim));
+    color: #06211a; display: grid; place-items: center; font-weight: 700; font-size: 13px;
+  }
+  header .uname { font-size: 13px; font-weight: 600; }
+  header .chev { color: var(--muted); font-size: 10px; }
+  header .dropdown {
+    position: absolute; right: 0; top: 46px; min-width: 190px; padding: 6px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 11px;
+    box-shadow: 0 18px 44px -22px #000; display: none; z-index: 30;
+  }
+  header .dropdown.open { display: block; }
+  header .dropdown .drole {
+    font: 600 10px var(--mono); color: var(--muted); padding: 6px 10px 8px;
+    text-transform: uppercase; letter-spacing: .5px;
+  }
+  header .dropdown a {
+    display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 7px;
+    color: var(--text); text-decoration: none; font-size: 13px; cursor: pointer;
+  }
+  header .dropdown a:hover { background: var(--surface-2); }
+  header .dropdown a.danger:hover { color: var(--danger); }
+  header .dropdown hr { border: 0; border-top: 1px solid var(--line); margin: 5px 2px; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 14px 22px 60px; }
+
+  .adder {
+    background: linear-gradient(180deg, var(--surface) 0%, var(--bg-soft) 100%);
+    border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 16px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+    box-shadow: 0 10px 30px -18px #000;
+  }
+  .adder input[type=text] {
+    flex: 1 1 420px; min-width: 240px; background: #0c1117; color: var(--text);
+    border: 1px solid var(--line); border-radius: 9px; padding: 12px 14px;
+    font: 14px/1.2 var(--mono); outline: none; transition: border-color .15s, box-shadow .15s;
+  }
+  .adder input[type=text]:focus { border-color: var(--accent-dim); box-shadow: 0 0 0 3px rgba(65,214,163,.12); }
+  .btn {
+    border: 1px solid var(--line); background: var(--surface-2); color: var(--text);
+    padding: 11px 16px; border-radius: 9px; font: 600 13px var(--sans); cursor: pointer;
+    transition: transform .08s, background .15s, border-color .15s;
+  }
+  .btn:hover { background: #2a3442; border-color: #3a4a5c; }
+  .btn:active { transform: translateY(1px); }
+  .btn.primary { background: var(--accent); color: #06211a; border-color: transparent; }
+  .btn.primary:hover { background: #54e6b3; }
+  .btn.ghost { background: transparent; }
+  .btn.small { padding: 7px 10px; font-size: 12px; border-radius: 7px; }
+  .btn.danger { color: var(--muted); }
+  .btn.danger:hover { color: var(--danger); border-color: #5a2626; background: rgba(255,107,107,.08); }
+  label.file { display: inline-flex; }
+  label.file input { display: none; }
+
+  .hint { color: var(--muted); font-size: 12px; margin: 10px 2px 24px; }
+  .hint code { color: var(--accent); font-family: var(--mono); }
+
+  .empty { text-align: center; color: var(--muted); padding: 60px 0; }
+  .empty .big { font-size: 17px; color: #b8c2cf; }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    margin-bottom: 14px; overflow: hidden;
+  }
+  .card .top { display: flex; align-items: center; gap: 12px; padding: 14px 16px; cursor: pointer; }
+  .card .name { font-weight: 600; font-size: 15px; flex: 1; word-break: break-word; }
+  .badge { font: 600 10.5px var(--mono); padding: 4px 8px; border-radius: 999px; text-transform: uppercase; letter-spacing: .4px; }
+  .badge.live   { color: var(--accent); background: rgba(65,214,163,.10); }
+  .badge.done   { color: #06211a; background: var(--accent); }
+  .badge.init   { color: var(--warn); background: rgba(255,207,92,.10); }
+  .badge.error  { color: var(--danger); background: rgba(255,107,107,.10); }
+  .badge.paused { color: var(--muted); background: rgba(139,151,166,.12); }
+  .spd { font: 600 12px var(--mono); color: var(--accent); min-width: 92px; text-align: right; }
+
+  .bar { height: 6px; background: #0c1117; }
+  .bar > i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent-dim), var(--accent)); transition: width .6s ease; }
+  .meta { display: flex; gap: 14px; padding: 8px 16px 12px; color: var(--muted); font: 12px var(--mono); }
+  .meta .hash { margin-left: auto; opacity: .65; }
+
+  .files { border-top: 1px solid var(--line); display: none; }
+  .files.open { display: block; }
+  .frow { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-top: 1px solid #20272f; }
+  .frow:first-child { border-top: none; }
+  .frow .fn { flex: 1; font-size: 13px; word-break: break-all; }
+  .frow .fn .fp { color: var(--muted); font: 11px var(--mono); }
+  .frow .sz { font: 12px var(--mono); color: var(--muted); min-width: 80px; text-align: right; }
+  .frow .acts { display: flex; gap: 6px; }
+  .ready { color: var(--accent); }
+  .notready { color: var(--warn); }
+  .frow.fhead { background: #10161d; color: var(--muted); font: 11px var(--mono); }
+  .frow.deselected .fn { opacity: .45; }
+  .chk { display: flex; align-items: center; }
+  .fchk { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+  .adder label.opt { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12.5px; cursor: pointer; user-select: none; }
+  .adder label.opt input { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
+
+  .hidden { display: none !important; }
+  .tabs { display: flex; align-items: center; gap: 4px; margin: 4px 2px 10px; border-bottom: 1px solid var(--line); }
+  .tabs .filter { margin-left: auto; margin-bottom: 6px; background: #0c1117; border: 1px solid var(--line); border-radius: 8px; padding: 7px 11px; color: var(--text); font: 12.5px var(--sans); outline: none; width: 180px; transition: border-color .15s, width .15s; }
+  .tabs .filter:focus { border-color: var(--accent-dim); width: 220px; }
+  .statsbar { display: flex; flex-wrap: wrap; gap: 16px; color: var(--muted); font: 12px var(--mono); margin: 0 2px 16px; }
+  .statsbar b { color: var(--accent); font-weight: 600; }
+  .dropzone { position: fixed; inset: 0; z-index: 60; display: none; place-items: center; background: rgba(13,16,20,.86); border: 3px dashed var(--accent-dim); }
+  body.dragging .dropzone { display: grid; }
+  .dropzone .msg { color: var(--accent); font: 600 20px var(--sans); }
+  .tabs2 { display: flex; gap: 4px; }
+  .tab { background: none; border: 0; color: var(--muted); font: 600 13px var(--sans); padding: 10px 16px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .overlay { position: fixed; inset: 0; background: rgba(3,6,9,.94); display: none; flex-direction: column; z-index: 50; }
+  .overlay.open { display: flex; }
+  .player-top { display: flex; align-items: center; gap: 12px; padding: 14px 18px; }
+  .player-top .pname { font-weight: 600; font-size: 14px; word-break: break-all; }
+  .player-top .closex { margin-left: auto; }
+  .overlay video { flex: 1; width: 100%; min-height: 0; background: #000; outline: none; }
+  /* Modal dialog (replaces native confirm/prompt) */
+  .modal-backdrop { position: fixed; inset: 0; background: rgba(3,6,9,.6); display: none; place-items: center; z-index: 70; }
+  .modal-backdrop.open { display: grid; }
+  .modal { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 22px; width: min(420px, 92vw); box-shadow: 0 24px 60px -24px #000; }
+  .modal h3 { margin: 0 0 8px; font-size: 16px; }
+  .modal p { margin: 0 0 18px; color: var(--muted); font-size: 13.5px; line-height: 1.5; word-break: break-word; }
+  .modal .mrow { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+  .modal .btn.danger { background: rgba(255,107,107,.12); color: var(--danger); border-color: #5a2626; }
+  .modal .btn.danger:hover { background: rgba(255,107,107,.22); }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);
+    background: #14241c; color: #c9f5e3; border: 1px solid #265a45; padding: 12px 16px;
+    border-radius: 10px; font: 13px var(--sans); max-width: 80vw; opacity: 0; pointer-events: none;
+    transition: opacity .25s; z-index: 80;
+  }
+  .toast.show { opacity: 1; }
+  .toast.bad { background: #2a1414; color: #ffd7d7; border-color: #5a2626; }
+  a.plain { color: inherit; text-decoration: none; }
+
+  /* Accessibility: visible focus rings */
+  .btn:focus-visible, .tab:focus-visible, input:focus-visible, .userbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* Mobile */
+  @media (max-width: 640px) {
+    header { flex-wrap: wrap; padding: 16px 14px 6px; }
+    .wrap { padding: 12px 14px 50px; }
+    .adder { flex-direction: column; align-items: stretch; }
+    .adder .btn, .adder label.file { width: 100%; justify-content: center; text-align: center; }
+    .card .top { flex-wrap: wrap; }
+    .frow { flex-wrap: wrap; }
+    .frow .acts { width: 100%; }
+    .tabs .filter { width: 120px; }
+    .tabs .filter:focus { width: 140px; }
+    .statsbar { gap: 12px; }
+  }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Magnet<span class="box">Box</span></h1>
+    <span class="tag">self-hosted</span>
+    <div class="usermenu" id="userbar"></div>
+  </header>
+
+  <div class="wrap">
+    <div class="adder">
+      <input id="src" type="text" placeholder="magnet:…   ·   https://…/file.torrent   ·   https://…/file.mp4" autocomplete="off" spellcheck="false" />
+      <button class="btn primary" id="addBtn">Add</button>
+      <label class="file btn ghost" title="Upload a .torrent file">
+        .torrent ⤒ <input id="file" type="file" accept=".torrent" multiple />
+      </label>
+      <label class="opt" title="Add without downloading, so you can pick files first">
+        <input id="paused" type="checkbox" /> add paused
+      </label>
+      <label class="opt" title="Add public trackers to find peers faster. Do NOT use for private-tracker torrents.">
+        <input id="trackers" type="checkbox" /> + public trackers
+      </label>
+    </div>
+    <div class="hint">
+      Paste a <b>magnet</b>, a <b>.torrent</b> URL, or a plain <b>http(s)</b> download link — it's auto-detected.
+      Videos play in-app while they download. Use only for content you have the right to download.
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" id="tabTorrents">Torrents</button>
+      <button class="tab" id="tabDownloads">Downloads</button>
+      <input id="filter" class="filter" placeholder="Filter by name…" autocomplete="off" />
+    </div>
+    <div class="statsbar" id="stats"></div>
+
+    <div id="list"><div class="empty"><div class="big">No torrents yet</div>Add a magnet above to get started.</div></div>
+    <div id="dllist" class="hidden"></div>
+  </div>
+
+  <div class="dropzone" id="dropzone"><div class="msg">⤓ Drop .torrent files to add</div></div>
+
+  <div class="overlay" id="player">
+    <div class="player-top">
+      <span class="pname" id="playerName"></span>
+      <button class="btn small ghost closex" onclick="closePlayer()">✕ Close</button>
+    </div>
+    <video controls playsinline></video>
+  </div>
+
+  <div class="modal-backdrop" id="modal"><div class="modal" id="modalBox"></div></div>
+
+  <div class="toast" id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const open = new Set();           // expanded torrent ids
+let TORRENTS = {};                // id -> latest torrent view
+const MEDIA = /\.(mp4|m4v|mkv|webm|avi|mov|ts|mp3|flac|m4a|aac|ogg|opus|wav)$/i;
+
+function toast(msg, bad) {
+  const t = $('#toast'); t.textContent = msg;
+  t.className = 'toast show' + (bad ? ' bad' : '');
+  clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 4000);
+}
+function humanTime(s) {
+  s = Math.round(s);
+  if (s < 60) return s + 's';
+  const m = Math.floor(s / 60);
+  if (m < 60) return m + 'm ' + (s % 60) + 's';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + 'h ' + (m % 60) + 'm';
+  return Math.floor(h / 24) + 'd ' + (h % 24) + 'h';
+}
+// Promise-based confirm modal (replaces native confirm/prompt).
+function modal({ title, message, buttons }) {
+  return new Promise(resolve => {
+    const box = $('#modalBox');
+    box.innerHTML = `<h3>${esc(title)}</h3><p>${message}</p><div class="mrow"></div>`;
+    const row = box.querySelector('.mrow');
+    let settled = false;
+    const onKey = e => { if (e.key === 'Escape') done(null); };
+    function done(v) {
+      if (settled) return; settled = true;
+      $('#modal').classList.remove('open');
+      document.removeEventListener('keydown', onKey);
+      resolve(v);
+    }
+    buttons.forEach(b => {
+      const el = document.createElement('button');
+      el.className = 'btn ' + (b.kind || '');
+      el.textContent = b.label;
+      el.onclick = () => done(b.value);
+      row.appendChild(el);
+    });
+    $('#modal').classList.add('open');
+    $('#modal').onclick = e => { if (e.target.id === 'modal') done(null); };
+    document.addEventListener('keydown', onKey);
+    const last = row.lastElementChild; if (last) last.focus();
+  });
+}
+function human(b) {
+  if (b == null) return '–';
+  const u = ['B','KB','MB','GB','TB']; let i = 0, v = b;
+  while (v >= 1024 && i < u.length-1) { v /= 1024; i++; }
+  return (i === 0 ? b + ' B' : v.toFixed(2) + ' ' + u[i]);
+}
+function badge(t) {
+  if (t.error) return ['error','error'];
+  if (t.finished) return ['done','done'];
+  const s = (t.state||'').toLowerCase();
+  if (s.includes('live')) return ['live','live'];
+  if (s.includes('paus')) return ['paused','paused'];
+  return ['init', t.state || 'init'];
+}
+
+async function addOne(source) {
+  const r = await fetch('/api/add', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ source, paused: $('#paused').checked, trackers: $('#trackers').checked })
+  });
+  const j = await r.json();
+  if (!r.ok || j.ok === false) throw new Error(j.error || 'add failed');
+  return j.kind;
+}
+async function add() {
+  // Whitespace-separates multiple magnets/links for batch adds.
+  const items = $('#src').value.trim().split(/\s+/).filter(Boolean);
+  if (!items.length) return;
+  $('#addBtn').disabled = true;
+  let ok = 0, fail = 0, lastTab = 'torrents';
+  for (const it of items) {
+    try { lastTab = (await addOne(it)) === 'link' ? 'downloads' : 'torrents'; ok++; }
+    catch (e) { fail++; toast('Add failed: ' + e.message, true); }
+  }
+  if (ok) {
+    $('#src').value = '';
+    showTab(lastTab);
+    if (items.length > 1) toast(`Added ${ok}${fail ? `, ${fail} failed` : ''}`);
+  }
+  $('#addBtn').disabled = false;
+  refresh();
+}
+
+async function uploadFile(f) {
+  const buf = await f.arrayBuffer();
+  const params = new URLSearchParams();
+  if ($('#paused').checked) params.set('paused', 'true');
+  if ($('#trackers').checked) params.set('trackers', 'true');
+  const qs = params.toString();
+  const r = await fetch('/api/upload' + (qs ? '?' + qs : ''), {
+    method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: buf
+  });
+  const j = await r.json();
+  if (!r.ok || j.ok === false) throw new Error(j.error || 'upload failed');
+}
+async function upload(fileInput) {
+  const files = [...fileInput.files];
+  let ok = 0;
+  for (const f of files) { try { await uploadFile(f); ok++; } catch (e) { toast('Upload failed: ' + e.message, true); } }
+  if (ok) { showTab('torrents'); refresh(); }
+  fileInput.value = '';
+}
+
+function fileRow(t, f) {
+  const ready = f.len > 0 && f.downloaded >= f.len;
+  const pct = f.len ? Math.floor(f.downloaded / f.len * 100) : 0;
+  const isMedia = MEDIA.test(f.name);
+  const dlUrl = `/download/${t.id}/${f.index}`;
+  const stUrl = `${location.origin}/stream/${t.id}/${f.index}`;
+  const fname = f.name.split('/').pop();
+  const dir = f.name.includes('/') ? f.name.slice(0, f.name.lastIndexOf('/')) : '';
+
+  const stream = isMedia
+    ? `<button class="btn small ghost" onclick="play(${t.id},${f.index})">▶ Play</button>` : '';
+  const chk = `<input type="checkbox" class="fchk" ${f.selected ? 'checked' : ''} onchange="toggleFile(${t.id},${f.index},this.checked)" title="Download this file">`;
+  return `
+    <div class="frow${f.selected ? '' : ' deselected'}">
+      <label class="chk">${chk}</label>
+      <div class="fn">${esc(fname)}${dir ? `<div class="fp">${esc(dir)}/</div>` : ''}</div>
+      <div class="sz">${human(f.len)}<br><span class="${ready?'ready':'notready'}">${ready?'ready':pct+'%'}</span></div>
+      <div class="acts">
+        ${stream}
+        <a class="btn small ghost plain" href="${dlUrl}">⤓ Download</a>
+        <button class="btn small ghost" onclick="copy('${stUrl}')">⧉ Link</button>
+      </div>
+    </div>`;
+}
+
+function card(t) {
+  const [cls, label] = badge(t);
+  const pct = t.total_bytes ? Math.floor(t.progress_bytes / t.total_bytes * 100) : 0;
+  const spd = (t.download_mbps && !t.finished) ? t.download_mbps.toFixed(2) + ' MiB/s' : '';
+  let eta = '';
+  if (!t.finished && t.download_mbps > 0 && t.total_bytes > t.progress_bytes) {
+    eta = ' · ' + humanTime((t.total_bytes - t.progress_bytes) / (t.download_mbps * 1048576)) + ' left';
+  }
+  const isOpen = open.has(t.id);
+  const selCount = t.files.filter(f => f.selected).length;
+  const selBytes = t.files.reduce((a, f) => a + (f.selected ? f.len : 0), 0);
+
+  const ctrlBtn = t.paused
+    ? `<button class="btn small primary" onclick="ctrl(event,${t.id},'resume')">▶ Resume</button>`
+    : `<button class="btn small ghost" onclick="ctrl(event,${t.id},'pause')">⏸ Pause</button>`;
+
+  const fhead = t.files.length ? `
+    <div class="frow fhead">
+      <div class="fn">${selCount} of ${t.files.length} files selected · ${human(selBytes)} to download</div>
+      <div class="acts">
+        <button class="btn small ghost" onclick="selectAll(${t.id},true)">select all</button>
+        <button class="btn small ghost" onclick="selectAll(${t.id},false)">none</button>
+      </div>
+    </div>` : '';
+  const files = t.files.map(f => fileRow(t, f)).join('');
+
+  return `
+    <div class="card">
+      <div class="top" onclick="toggle(${t.id})">
+        <div class="name">${esc(t.name)}</div>
+        ${ctrlBtn}
+        <button class="btn small ghost danger" onclick="del(event,${t.id})" title="Remove torrent">🗑</button>
+        <span class="spd">${spd}</span>
+        <span class="badge ${cls}">${esc(label)}</span>
+      </div>
+      <div class="bar"><i style="width:${pct}%"></i></div>
+      <div class="meta">
+        <span>${human(t.progress_bytes)} / ${human(t.total_bytes)} · ${pct}%${eta}</span>
+        <span>${t.files.length} file${t.files.length===1?'':'s'}</span>
+        ${t.error ? `<span style="color:var(--danger)">${esc(t.error)}</span>` : ''}
+        <span class="hash">${esc(t.info_hash.slice(0,16))}…</span>
+      </div>
+      <div class="files ${isOpen?'open':''}">${fhead}${files || '<div class="frow"><div class="fn" style="color:var(--muted)">resolving metadata…</div></div>'}</div>
+    </div>`;
+}
+
+function render(torrents, adding) {
+  TORRENTS = {};
+  torrents.forEach(t => TORRENTS[t.id] = t);
+  const list = $('#list');
+  if (!torrents.length) {
+    list.innerHTML = adding > 0
+      ? '<div class="empty"><div class="big">Resolving magnet metadata…</div>This can take 10–60s and needs BitTorrent access through your firewall.</div>'
+      : '<div class="empty"><div class="big">No torrents yet</div>Add a magnet above to get started.</div>';
+    return;
+  }
+  const shown = FILTER
+    ? torrents.filter(t => matchName(t.name) || (t.files || []).some(f => matchName(f.name)))
+    : torrents;
+  if (!shown.length) {
+    list.innerHTML = `<div class="empty"><div class="big">No matches</div>for “${esc(FILTER)}”</div>`;
+    return;
+  }
+  list.innerHTML = shown.map(card).join('');
+}
+function setAdding(n) {
+  const b = $('#addBtn');
+  b.textContent = n > 0 ? `Adding… (${n})` : 'Add';
+}
+
+function toggle(id) { open.has(id) ? open.delete(id) : open.add(id); refresh(); }
+function copy(url) { navigator.clipboard.writeText(url).then(()=>toast('Stream link copied'), ()=>toast(url)); }
+
+function toggleFile(id, idx, checked) {
+  const t = TORRENTS[id]; if (!t) return;
+  let sel = t.files.filter(f => f.selected).map(f => f.index).filter(i => i !== idx);
+  if (checked) sel.push(idx);
+  postFiles(id, sel);
+}
+function selectAll(id, on) {
+  const t = TORRENTS[id]; if (!t) return;
+  postFiles(id, on ? t.files.map(f => f.index) : []);
+}
+async function postFiles(id, files) {
+  // optimistic: reflect immediately so the UI doesn't flicker before next poll
+  const t = TORRENTS[id];
+  if (t) t.files.forEach(f => f.selected = files.includes(f.index));
+  rerender();
+  try {
+    const r = await fetch(`/api/torrents/${id}/files`, {
+      method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify({ files })
+    });
+    const j = await r.json();
+    if (!r.ok || j.ok === false) throw new Error(j.error || 'update failed');
+  } catch (e) { toast('Selection failed: ' + e.message, true); }
+  refresh();
+}
+async function ctrl(ev, id, action) {
+  ev.stopPropagation();
+  try {
+    const r = await fetch(`/api/torrents/${id}/${action}`, { method: 'POST' });
+    const j = await r.json();
+    if (!r.ok || j.ok === false) throw new Error(j.error || (action + ' failed'));
+  } catch (e) { toast(action + ' failed: ' + e.message, true); }
+  refresh();
+}
+async function del(ev, id) {
+  ev.stopPropagation();
+  const t = TORRENTS[id];
+  const choice = await modal({
+    title: 'Remove torrent',
+    message: `“${esc(t ? t.name : String(id))}” — keep the downloaded files, or delete them too?`,
+    buttons: [
+      { label: 'Cancel', value: null, kind: 'ghost' },
+      { label: 'Remove, keep files', value: 'keep' },
+      { label: 'Delete files too', value: 'files', kind: 'danger' },
+    ],
+  });
+  if (!choice) return;
+  const alsoFiles = choice === 'files';
+  open.delete(id);
+  try {
+    const r = await fetch(`/api/torrents/${id}/delete?files=${alsoFiles}`, { method: 'POST' });
+    const j = await r.json();
+    if (!r.ok || j.ok === false) throw new Error(j.error || 'delete failed');
+    toast(alsoFiles ? 'Torrent and files deleted' : 'Torrent removed (files kept)');
+  } catch (e) { toast('Delete failed: ' + e.message, true); }
+  refresh();
+}
+function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+let FILTER = '';
+let LAST_TORRENTS = [], LAST_ADDING = 0, LAST_DOWNLOADS = [];
+function matchName(s) { return !FILTER || (s || '').toLowerCase().includes(FILTER); }
+
+async function refresh() {
+  try {
+    const [tr, dl] = await Promise.all([fetch('/api/torrents'), fetch('/api/links')]);
+    if (tr.ok) {
+      const j = await tr.json();
+      LAST_TORRENTS = j.torrents || []; LAST_ADDING = j.adding || 0;
+      setAdding(LAST_ADDING);
+      (j.errors || []).forEach(e => toast('Add failed: ' + e, true));
+    }
+    if (dl.ok) {
+      const j = await dl.json();
+      LAST_DOWNLOADS = j.downloads || [];
+    }
+    rerender();
+  } catch (e) { /* transient */ }
+}
+function rerender() {
+  render(LAST_TORRENTS, LAST_ADDING);
+  renderDownloads(LAST_DOWNLOADS);
+  renderStats(LAST_TORRENTS, LAST_DOWNLOADS);
+}
+function renderStats(torrents, downloads) {
+  const active = torrents.filter(t => !t.finished).length;
+  const mbps = torrents.reduce((a, t) => a + (t.finished ? 0 : (t.download_mbps || 0)), 0);
+  const used = torrents.reduce((a, t) => a + (t.progress_bytes || 0), 0)
+    + downloads.reduce((a, d) => a + (d.downloaded || 0), 0);
+  const running = downloads.filter(d => d.status === 'downloading').length;
+  $('#stats').innerHTML =
+    `<span>⬇ <b>${mbps.toFixed(1)}</b> MiB/s</span>` +
+    `<span><b>${active}</b> active · ${torrents.length} torrents</span>` +
+    `<span><b>${downloads.length}</b> downloads${running ? ` · ${running} running` : ''}</span>` +
+    `<span><b>${human(used)}</b> stored</span>`;
+}
+
+// ---- Downloads tab (direct links) ----
+function renderDownloads(items) {
+  const el = $('#dllist');
+  if (!items.length) {
+    el.innerHTML = '<div class="empty"><div class="big">No direct downloads</div>Paste an http(s) link above to fetch a file.</div>';
+    return;
+  }
+  const shown = FILTER ? items.filter(d => matchName(d.filename) || matchName(d.url)) : items;
+  if (!shown.length) { el.innerHTML = `<div class="empty"><div class="big">No matches</div>for “${esc(FILTER)}”</div>`; return; }
+  el.innerHTML = shown.map(dcard).join('');
+}
+function dcard(d) {
+  const pct = d.total ? Math.floor(d.downloaded / d.total * 100) : (d.status === 'done' ? 100 : 0);
+  const cls = d.status === 'done' ? 'done' : (d.status === 'error' ? 'error' : 'live');
+  const dlUrl = `/dl/${d.id}`;
+  const done = d.status === 'done';
+  const playBtn = (done && MEDIA.test(d.filename)) ? `<button class="btn small ghost" onclick="playDl(${d.id})">▶ Play</button>` : '';
+  const dlBtn = done ? `<a class="btn small ghost plain" href="${dlUrl}">⤓ Download</a>` : '';
+  const copyBtn = done ? `<button class="btn small ghost" onclick="copy('${location.origin}${dlUrl}')">⧉ Link</button>` : '';
+  return `
+    <div class="card">
+      <div class="top" style="cursor:default">
+        <div class="name">${esc(d.filename)}</div>
+        ${playBtn}${dlBtn}${copyBtn}
+        <button class="btn small ghost danger" onclick="delLink(event,${d.id})" title="Remove">🗑</button>
+        <span class="badge ${cls}">${esc(d.status)}</span>
+      </div>
+      <div class="bar"><i style="width:${pct}%"></i></div>
+      <div class="meta">
+        <span>${human(d.downloaded)}${d.total ? ' / ' + human(d.total) : ''} · ${pct}%</span>
+        ${d.error ? `<span style="color:var(--danger)">${esc(d.error)}</span>` : ''}
+        <span class="hash" title="${esc(d.url)}">${esc(shortUrl(d.url))}</span>
+      </div>
+    </div>`;
+}
+async function delLink(ev, id) {
+  ev.stopPropagation();
+  const choice = await modal({
+    title: 'Remove download',
+    message: 'Remove this download and delete its file from disk?',
+    buttons: [
+      { label: 'Cancel', value: null, kind: 'ghost' },
+      { label: 'Delete', value: 'yes', kind: 'danger' },
+    ],
+  });
+  if (!choice) return;
+  try {
+    const r = await fetch(`/api/links/${id}/delete?files=true`, { method: 'POST' });
+    const j = await r.json();
+    if (!r.ok || j.ok === false) throw new Error(j.error || 'failed');
+  } catch (e) { toast('Delete failed: ' + e.message, true); }
+  refresh();
+}
+function shortUrl(u) { try { const x = new URL(u); return x.hostname + (x.pathname.length > 1 ? '…' : ''); } catch (e) { return u.slice(0, 40); } }
+function playDl(id) {
+  const d = LAST_DOWNLOADS.find(x => x.id === id);
+  if (d) openPlayer('/dl/' + id, d.filename, '');  // filename used only as textContent in openPlayer (safe)
+}
+
+// ---- in-app video/audio player ----
+function play(tid, idx) {
+  const t = TORRENTS[tid]; if (!t) return;
+  const f = t.files.find(x => x.index === idx); if (!f) return;
+  const subs = t.files.filter(x => /\.(srt|vtt)$/i.test(x.name));
+  const tracks = subs.map((s, i) =>
+    `<track kind="subtitles" src="/subtitle/${tid}/${s.index}" srclang="${subLang(s.name)}" label="${esc(subLabel(s.name))}"${i === 0 ? ' default' : ''}>`
+  ).join('');
+  openPlayer(`/stream/${tid}/${idx}`, f.name.split('/').pop(), tracks);
+}
+function openPlayer(src, name, tracks) {
+  const v = $('#player video');
+  v.pause(); v.innerHTML = tracks || ''; v.src = src;
+  $('#playerName').textContent = name;
+  $('#player').classList.add('open');
+  v.load(); v.play().catch(() => {});
+}
+function closePlayer() {
+  const v = $('#player video');
+  v.pause(); v.removeAttribute('src'); v.innerHTML = ''; v.load();
+  $('#player').classList.remove('open');
+}
+function subLang(n) { const m = n.match(/\.([a-z]{2,3})\.(srt|vtt)$/i); return m ? m[1].toLowerCase() : ''; }
+function subLabel(n) { const l = subLang(n); return l ? l.toUpperCase() : n.split('/').pop(); }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closePlayer(); });
+
+// ---- tabs ----
+function showTab(name) {
+  $('#tabTorrents').classList.toggle('active', name === 'torrents');
+  $('#tabDownloads').classList.toggle('active', name === 'downloads');
+  $('#list').classList.toggle('hidden', name !== 'torrents');
+  $('#dllist').classList.toggle('hidden', name !== 'downloads');
+}
+$('#tabTorrents').addEventListener('click', () => showTab('torrents'));
+$('#tabDownloads').addEventListener('click', () => showTab('downloads'));
+
+function applyPrefs() {
+  if (localStorage.getItem('mb_pref_paused') === '1') $('#paused').checked = true;
+  if (localStorage.getItem('mb_pref_trackers') === '1') $('#trackers').checked = true;
+}
+async function loadMe() {
+  try {
+    const r = await fetch('/api/me');
+    if (!r.ok) { location.href = '/login'; return; }
+    const me = await r.json();
+    const initial = (me.username[0] || '?').toUpperCase();
+    const adminItem = me.role === 'admin' ? `<a href="/admin">🛡 User management</a>` : '';
+    $('#userbar').innerHTML = `
+      <button class="userbtn" id="userbtn" aria-haspopup="true">
+        <span class="avatar">${esc(initial)}</span>
+        <span class="uname">${esc(me.username)}</span>
+        <span class="chev">▾</span>
+      </button>
+      <div class="dropdown" id="dropdown">
+        <div class="drole">${esc(me.role)}</div>
+        <a href="/account">👤 Account</a>
+        <a href="/settings">⚙ Settings</a>
+        <a href="/docs">🔌 API</a>
+        ${adminItem}
+        <hr>
+        <a class="danger" id="logoutItem">⎋ Log out</a>
+      </div>`;
+    const dd = $('#dropdown');
+    $('#userbtn').addEventListener('click', e => { e.stopPropagation(); dd.classList.toggle('open'); });
+    $('#logoutItem').addEventListener('click', logout);
+    document.addEventListener('click', () => dd.classList.remove('open'));
+  } catch (e) { /* transient */ }
+}
+function logout() {
+  fetch('/api/logout', { method: 'POST' }).finally(() => location.href = '/login');
+}
+
+$('#addBtn').addEventListener('click', add);
+$('#src').addEventListener('keydown', e => { if (e.key === 'Enter') add(); });
+$('#file').addEventListener('change', e => upload(e.target));
+$('#filter').addEventListener('input', e => { FILTER = e.target.value.trim().toLowerCase(); rerender(); });
+
+// Drag-and-drop .torrent files anywhere on the page.
+['dragenter', 'dragover'].forEach(ev => window.addEventListener(ev, e => {
+  if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) {
+    e.preventDefault(); document.body.classList.add('dragging');
+  }
+}));
+window.addEventListener('dragleave', e => { if (!e.relatedTarget) document.body.classList.remove('dragging'); });
+window.addEventListener('drop', async e => {
+  e.preventDefault(); document.body.classList.remove('dragging');
+  const files = [...(e.dataTransfer?.files || [])].filter(f => f.name.toLowerCase().endsWith('.torrent'));
+  if (!files.length) return;
+  let ok = 0;
+  for (const f of files) { try { await uploadFile(f); ok++; } catch (err) { toast('Upload failed: ' + err.message, true); } }
+  if (ok) { showTab('torrents'); toast(`Added ${ok} torrent${ok > 1 ? 's' : ''}`); refresh(); }
+});
+
+applyPrefs();
+loadMe();
+refresh();
+setInterval(refresh, 1200);
+</script>
+</body>
+</html>

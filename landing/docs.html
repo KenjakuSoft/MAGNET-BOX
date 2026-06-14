@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MagnetBox — Documentation</title>
+<meta name="description" content="MagnetBox documentation: why it exists, what it does, and how to install and run your own self-hosted download box." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d1014'/%3E%3Ctext x='16' y='22' font-size='18' font-family='sans-serif' font-weight='700' fill='%2341d6a3' text-anchor='middle'%3EM%3C/text%3E%3C/svg%3E" />
+<style>
+  :root {
+    --bg: #0b0e12; --bg-2: #0d1117; --surface: #141b23; --surface-2: #1b242e;
+    --line: #26313c; --text: #e9eef4; --muted: #8b97a6; --faint: #5c6773;
+    --accent: #41d6a3; --accent-2: #38bdf8; --accent-dim: #1f6b54; --warn: #ffcf5c; --danger: #ff6b6b;
+    --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --sb: 256px; --top: 60px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.65; -webkit-font-smoothing: antialiased; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* top bar */
+  .topbar { position: sticky; top: 0; z-index: 40; height: var(--top); display: flex; align-items: center; gap: 14px;
+    padding: 0 20px; background: rgba(11,14,18,.85); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+  .brand { display: flex; align-items: center; gap: 9px; font-weight: 800; font-size: 17px; }
+  .brand .logo { width: 26px; height: 26px; border-radius: 7px; background: linear-gradient(135deg, var(--accent), var(--accent-dim)); display: grid; place-items: center; color: #042018; font-weight: 800; }
+  .brand .box { color: var(--accent); }
+  .brand .doctag { font: 600 10px var(--mono); color: var(--muted); border: 1px solid var(--line); padding: 2px 7px; border-radius: 6px; margin-left: 4px; letter-spacing: .1em; text-transform: uppercase; }
+  .top-links { margin-left: auto; display: flex; gap: 18px; align-items: center; }
+  .top-links a { color: var(--muted); font-size: 14px; }
+  .top-links a:hover { color: var(--text); text-decoration: none; }
+  .menu-btn { display: none; background: none; border: 0; color: var(--text); font-size: 22px; cursor: pointer; }
+
+  .layout { display: grid; grid-template-columns: var(--sb) 1fr; max-width: 1240px; margin: 0 auto; }
+
+  /* sidebar */
+  .sidebar { position: sticky; top: var(--top); align-self: start; height: calc(100vh - var(--top));
+    overflow-y: auto; padding: 26px 14px 60px; border-right: 1px solid var(--line); }
+  .sidebar .grp { margin-bottom: 22px; }
+  .sidebar .grp h4 { font: 600 11px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--faint); margin: 0 0 8px 12px; }
+  .sidebar a { display: block; color: var(--muted); font-size: 14px; padding: 6px 12px; border-radius: 7px; border-left: 2px solid transparent; }
+  .sidebar a:hover { color: var(--text); background: var(--surface); text-decoration: none; }
+  .sidebar a.active { color: var(--accent); border-left-color: var(--accent); background: rgba(65,214,163,.06); }
+
+  /* content */
+  .content { padding: 38px 48px 120px; min-width: 0; max-width: 820px; }
+  .content section { scroll-margin-top: calc(var(--top) + 16px); padding-bottom: 14px; }
+  .content h1 { font-size: 2rem; letter-spacing: -.02em; margin: 0 0 6px; }
+  .content h2 { font-size: 1.5rem; letter-spacing: -.01em; margin: 46px 0 10px; padding-top: 8px; }
+  .content h3 { font-size: 1.12rem; margin: 28px 0 8px; }
+  .content p, .content li { color: #c7d0da; }
+  .content .lead { color: var(--muted); font-size: 1.08rem; }
+  .content ul, .content ol { padding-left: 22px; }
+  .content li { margin: 6px 0; }
+  code { font: 0.86em var(--mono); background: #0c1219; border: 1px solid var(--line); padding: 1px 6px; border-radius: 5px; color: #9ff0d2; }
+  pre { background: #0c1219; border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; overflow-x: auto; margin: 14px 0; }
+  pre code { background: none; border: 0; padding: 0; color: #c7d0da; font-size: 13px; line-height: 1.6; }
+  .cmd { color: var(--faint); }
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font: 600 11px var(--mono); text-transform: uppercase; }
+  td code { white-space: nowrap; }
+  .callout { border: 1px solid var(--line); border-left: 3px solid var(--accent); background: rgba(65,214,163,.05); border-radius: 8px; padding: 12px 16px; margin: 16px 0; font-size: 14px; }
+  .callout.warn { border-left-color: var(--warn); background: rgba(255,207,92,.05); }
+  .callout b { color: var(--text); }
+  hr { border: 0; border-top: 1px solid var(--line); margin: 40px 0; }
+  .pagefoot { color: var(--faint); font-size: 13px; margin-top: 40px; }
+
+  @media (max-width: 860px) {
+    .layout { grid-template-columns: 1fr; }
+    .menu-btn { display: block; margin-left: auto; }
+    .top-links { display: none; }
+    .sidebar { position: fixed; top: var(--top); left: 0; bottom: 0; width: 280px; background: var(--bg-2); z-index: 45;
+      transform: translateX(-100%); transition: transform .2s ease; box-shadow: 30px 0 60px -30px #000; }
+    .sidebar.open { transform: none; }
+    .content { padding: 28px 20px 100px; }
+  }
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="index.html"><span class="logo">M</span>Magnet<span class="box">Box</span><span class="doctag">docs</span></a>
+    <nav class="top-links">
+      <a href="index.html">Home</a>
+      <a href="https://github.com/KenjakuSoft/MAGNET-BOX" target="_blank" rel="noopener">GitHub</a>
+      <a href="index.html#support">Donate</a>
+    </nav>
+    <button class="menu-btn" id="menuBtn" aria-label="Menu">☰</button>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar" id="sidebar">
+      <div class="grp">
+        <h4>Getting started</h4>
+        <a href="#introduction">Introduction</a>
+        <a href="#why">Why MagnetBox</a>
+        <a href="#what">What it does</a>
+        <a href="#quick-start">Quick start</a>
+      </div>
+      <div class="grp">
+        <h4>Install &amp; deploy</h4>
+        <a href="#build">Build from source</a>
+        <a href="#deploy">Deploy to a server</a>
+        <a href="#config">Configuration</a>
+      </div>
+      <div class="grp">
+        <h4>Using MagnetBox</h4>
+        <a href="#adding">Adding content</a>
+        <a href="#streaming">Streaming &amp; files</a>
+        <a href="#users">Users &amp; invites</a>
+        <a href="#admin">Admin console</a>
+        <a href="#retention">Retention</a>
+        <a href="#api">API &amp; tokens</a>
+      </div>
+      <div class="grp">
+        <h4>Reference</h4>
+        <a href="#security">Security</a>
+        <a href="#faq">FAQ &amp; troubleshooting</a>
+      </div>
+    </aside>
+
+    <main class="content">
+      <section id="introduction">
+        <h1>MagnetBox documentation</h1>
+        <p class="lead">MagnetBox is a self-hosted app that turns magnets, torrents and direct links into clean HTTP downloads you can grab or stream in your browser — running entirely on a server you control.</p>
+        <p>It's <b>free and open</b>. You run it on your own hardware; nothing phones home, and no data leaves your machine. This guide explains why it exists, what it does, and how to get it running — even if you've never set up a server before.</p>
+        <div class="callout">💚 MagnetBox is donation-supported. If it's useful to you, consider <a href="index.html#support">supporting development</a>.</div>
+      </section>
+
+      <section id="why">
+        <h2>Why MagnetBox</h2>
+        <p>Most "torrent-to-direct-download" and streaming services are run by someone else: your links, your activity, and your data pass through their servers, usually behind a paid subscription. MagnetBox flips that around.</p>
+        <ul>
+          <li><b>Your server, your data.</b> Everything runs on hardware you own or rent. There's no third party in the middle.</li>
+          <li><b>No subscription, no lock-in.</b> It's free software. Run it forever; nothing to renew.</li>
+          <li><b>One small binary.</b> No database server, no container stack required — a single Rust executable plus a folder.</li>
+          <li><b>Private by design.</b> Multi-user with invite-only registration, 2FA, and an admin console — built for a small, trusted group, not the open internet.</li>
+        </ul>
+        <p>It's a neutral, general-purpose tool — like qBittorrent or Plex. Use it for content you have the right to download: your own files, Linux ISOs, Creative-Commons and licensed media, and anything else you're allowed to.</p>
+      </section>
+
+      <section id="what">
+        <h2>What it does</h2>
+        <ul>
+          <li><b>Add anything</b> — paste a magnet, a <code>.torrent</code> URL, or any <code>http(s)</code> link; the type is auto-detected.</li>
+          <li><b>Download to your server</b> at full speed, then grab a private direct link or play it in-app.</li>
+          <li><b>Stream while downloading</b> — the built-in player seeks before the file finishes and loads subtitle tracks from the torrent.</li>
+          <li><b>Pick files</b> inside a torrent, pause/resume/delete, batch-add, and drag-and-drop <code>.torrent</code> files.</li>
+          <li><b>Multi-user</b> with invite-only registration, roles, and per-user limits.</li>
+          <li><b>Admin console</b> — live CPU/RAM/disk, users, sessions, audit log, bandwidth, bulk controls.</li>
+          <li><b>Retention</b> — optionally auto-delete content after N days to save space.</li>
+          <li><b>API</b> — OpenAPI 3.1 spec + per-user tokens for scripts and media tools.</li>
+        </ul>
+      </section>
+
+      <section id="quick-start">
+        <h2>Quick start</h2>
+        <p>If you just want to try it on your own computer:</p>
+        <pre><code><span class="cmd"># 1. install Rust (rustup.rs), then clone &amp; run:</span>
+git clone https://github.com/KenjakuSoft/MAGNET-BOX.git
+cd MAGNET-BOX
+cargo run</code></pre>
+        <p>It prints a URL (default <code>http://127.0.0.1:8080</code>) and, on first run, a generated <b>admin password</b>. Open the URL, sign in as <code>admin</code> with that password, and you're in.</p>
+        <div class="callout warn">⚠️ Run it in a terminal so you can see the first-run password. Lost it? See <a href="#faq">FAQ</a>.</div>
+      </section>
+
+      <section id="build">
+        <h2>Build from source</h2>
+        <p>MagnetBox is a Rust project. Install the Rust toolchain from <a href="https://rustup.rs" target="_blank" rel="noopener">rustup.rs</a>, clone the repo, then build:</p>
+        <pre><code>git clone https://github.com/KenjakuSoft/MAGNET-BOX.git
+cd MAGNET-BOX
+
+<span class="cmd"># development run</span>
+cargo run
+
+<span class="cmd"># optimized production binary → target/release/magnetbox</span>
+cargo build --release</code></pre>
+        <p>The web UI and docs are compiled <i>into</i> the binary, so the single executable is all you need to ship.</p>
+      </section>
+
+      <section id="deploy">
+        <h2>Deploy to a server</h2>
+        <p>For a real, always-on instance you'll want a small Linux server (VPS) and a domain. Beginner-friendly path:</p>
+        <ol>
+          <li><b>Get a domain</b> (Cloudflare, Porkbun, Namecheap) and a <b>VPS</b> running Ubuntu 24.04 (Hetzner, DigitalOcean, Vultr). 2 vCPU / 4 GB RAM is plenty; pick a host with generous bandwidth and enough disk for your downloads.</li>
+          <li><b>Point the domain</b> at the VPS with an <code>A</code> record → the server's IP.</li>
+          <li><b>Build it on the server:</b>
+<pre><code>apt update &amp;&amp; apt install -y build-essential pkg-config curl
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+source "$HOME/.cargo/env"
+cargo build --release</code></pre></li>
+          <li><b>Run it as a service</b> with the included <code>deploy/magnetbox.service</code> (systemd) — it binds localhost, enables secure cookies, and locks down the filesystem. Then <code>systemctl enable --now magnetbox</code>. Grab the first-run admin password with <code>journalctl -u magnetbox</code>.</li>
+          <li><b>Add HTTPS</b> with <a href="https://caddyserver.com" target="_blank" rel="noopener">Caddy</a> using the included <code>deploy/Caddyfile</code> — it gets a free certificate automatically and proxies to the app.</li>
+          <li><b>Firewall:</b> <code>ufw allow OpenSSH &amp;&amp; ufw allow 80 &amp;&amp; ufw allow 443 &amp;&amp; ufw enable</code>.</li>
+          <li><b>Open your domain</b>, sign in, change the admin password, and turn on 2FA.</li>
+        </ol>
+        <div class="callout">Keep the app bound to <code>127.0.0.1</code> behind Caddy — never expose the app port directly. The <code>deploy/</code> folder has ready-to-use <code>Caddyfile</code> and systemd unit.</div>
+      </section>
+
+      <section id="config">
+        <h2>Configuration</h2>
+        <p>MagnetBox is configured entirely with environment variables — no config file to edit.</p>
+        <table>
+          <thead><tr><th>Variable</th><th>Default</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td><code>MAGNETBOX_PORT</code></td><td>8080</td><td>Listen port</td></tr>
+            <tr><td><code>MAGNETBOX_BIND</code></td><td>127.0.0.1</td><td>Bind address (keep localhost; proxy in front)</td></tr>
+            <tr><td><code>MAGNETBOX_DIR</code></td><td>./downloads</td><td>Where downloaded files are stored</td></tr>
+            <tr><td><code>MAGNETBOX_DATA</code></td><td>./magnetbox-data</td><td>Where accounts/settings live</td></tr>
+            <tr><td><code>MAGNETBOX_HTTPS</code></td><td>0</td><td><code>1</code> marks session cookies <code>Secure</code> (set when behind HTTPS)</td></tr>
+            <tr><td><code>MAGNETBOX_ADMIN_USER</code></td><td>admin</td><td>First-run admin username</td></tr>
+            <tr><td><code>MAGNETBOX_ADMIN_PASSWORD</code></td><td><i>generated</i></td><td>First-run admin password (≥8 chars). Set it to reset a lost admin password.</td></tr>
+            <tr><td><code>RUST_LOG</code></td><td>info</td><td>Log verbosity</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="adding">
+        <h2>Adding content</h2>
+        <p>Paste into the add bar at the top:</p>
+        <ul>
+          <li>A <b>magnet</b> link, or an <code>http(s)</code> URL to a <code>.torrent</code> → handled by the torrent engine.</li>
+          <li>Any other <b>http(s) link</b> → fetched by the direct-link downloader.</li>
+        </ul>
+        <p>Add several at once (separated by spaces/newlines), or <b>drag-and-drop</b> <code>.torrent</code> files onto the page. Tick <b>add paused</b> to choose which files to download before it starts. The <b>Torrents</b> and <b>Downloads</b> tabs list everything, with a filter box and live stats.</p>
+      </section>
+
+      <section id="streaming">
+        <h2>Streaming &amp; files</h2>
+        <p>Each torrent expands to its file list. For each file you can:</p>
+        <ul>
+          <li><b>▶ Play</b> — opens the in-app player; video/audio streams and seeks even before the download finishes, with subtitle tracks from sibling <code>.srt</code> files.</li>
+          <li><b>⤓ Download</b> — pull the file over HTTP (supports resuming / range requests).</li>
+          <li><b>⧉ Link</b> — copy a direct link to open in VLC, Infuse, etc.</li>
+          <li><b>Checkboxes</b> — choose exactly which files download; toggle anytime.</li>
+        </ul>
+      </section>
+
+      <section id="users">
+        <h2>Users &amp; invites</h2>
+        <p>MagnetBox is built for a small, trusted group. Registration is <b>closed by default</b>.</p>
+        <ol>
+          <li>In <b>Admin → Access</b>, flip <b>Registration open</b> on during a window.</li>
+          <li>In <b>Admin → Invites</b>, generate an <b>invite code</b> (single/multi-use, optional expiry) and share it.</li>
+          <li>The invitee signs up at <code>/register</code> with the code, username, email and password.</li>
+          <li>Close registration again when the window's over.</li>
+        </ol>
+        <p>Admins can <b>ban/unban</b>, reset passwords, rotate a user's API token, and see last-seen/IP and bandwidth per user.</p>
+      </section>
+
+      <section id="admin">
+        <h2>Admin console</h2>
+        <p>The <code>/admin</code> console (admin accounts only) has:</p>
+        <ul>
+          <li><b>Overview</b> — live download speed, torrent/download counts, storage used, users, sessions, and host <b>CPU / RAM / disk</b>; quick bulk actions.</li>
+          <li><b>Torrents / Downloads</b> — every item with controls and bulk pause/resume/clear.</li>
+          <li><b>Users / Invites</b> — account and invite management.</li>
+          <li><b>Sessions</b> — every active login, revoke any.</li>
+          <li><b>Activity</b> — an audit log of state-changing actions.</li>
+          <li><b>Access / Settings</b> — registration window, maintenance mode, speed limits, per-user concurrency, retention.</li>
+        </ul>
+      </section>
+
+      <section id="retention">
+        <h2>Retention (auto-expiry)</h2>
+        <p>To keep disk usage in check, set <b>Admin → Access → Auto-delete after (days)</b>. MagnetBox then removes torrents and downloads (and their files) older than that, on an hourly sweep, with a <b>Run cleanup now</b> button for manual runs. <code>0</code> = keep forever.</p>
+      </section>
+
+      <section id="api">
+        <h2>API &amp; tokens</h2>
+        <p>Every endpoint can be driven programmatically. On the <b>Account</b> page, generate an <b>API token</b>, then call the API with:</p>
+        <pre><code>curl -H "Authorization: Bearer YOUR_TOKEN" https://your-host/api/torrents</code></pre>
+        <p>The full machine-readable spec is at <code>/api/openapi.json</code> (OpenAPI 3.1) and a live reference page is at <code>/docs</code> on your running instance — import it into Postman/Insomnia or point Kodi/Stremio-style tools at it.</p>
+      </section>
+
+      <section id="security">
+        <h2>Security</h2>
+        <ul>
+          <li><b>argon2</b>-hashed passwords; <b>2FA (TOTP)</b> with one-time recovery codes.</li>
+          <li>Sessions over <b>HttpOnly + SameSite=Strict</b> cookies (<code>Secure</code> with <code>MAGNETBOX_HTTPS=1</code>).</li>
+          <li><b>SSRF protection</b> on the link downloader (refuses private/loopback/cloud-metadata addresses, including across redirects).</li>
+          <li>Security headers (<code>nosniff</code>, <code>X-Frame-Options: DENY</code>, etc.); CSRF protection; login throttling.</li>
+          <li>Secrets files written owner-only (<code>0600</code>) on Linux.</li>
+        </ul>
+        <div class="callout warn">Before going live: run behind HTTPS, keep registration closed, enable 2FA on admin accounts, firewall to 80/443 only, and run <code>cargo audit</code> on the server to scan dependencies for CVEs.</div>
+      </section>
+
+      <section id="faq">
+        <h2>FAQ &amp; troubleshooting</h2>
+        <h3>I lost the admin password / can't log in</h3>
+        <p>Set <code>MAGNETBOX_ADMIN_PASSWORD</code> to a new value (≥8 chars) and restart — it resets the admin account. Watch the console for the confirmation line. Note the username is case-sensitive (default <code>admin</code>).</p>
+        <h3>A magnet won't resolve / nothing downloads</h3>
+        <p>Usually a firewall/VPN/antivirus blocking BitTorrent traffic. Allow the binary through, and try a well-seeded magnet. After 120 s the UI shows a clear message.</p>
+        <h3>Registration says it's closed</h3>
+        <p>That's the default. An admin opens it in <b>Admin → Access</b> and hands out an invite code.</p>
+        <h3>Does it phone home or need your servers?</h3>
+        <p>No. It runs entirely on your machine — no telemetry, no external dependency to keep working.</p>
+        <h3>What can I legally use it for?</h3>
+        <p>It's a neutral tool. Use it for content you have the right to download and store — your own files, Linux ISOs, Creative-Commons and licensed media. You're responsible for what you do on your own server.</p>
+
+        <hr />
+        <p class="pagefoot">MagnetBox is free, self-hosted software. Use it only for content you have the legal right to download and store.</p>
+      </section>
+    </main>
+  </div>
+
+<script>
+  const sb = document.getElementById('sidebar'), mb = document.getElementById('menuBtn');
+  mb.addEventListener('click', () => sb.classList.toggle('open'));
+  sb.querySelectorAll('a').forEach(a => a.addEventListener('click', () => sb.classList.remove('open')));
+  // scrollspy
+  const links = [...sb.querySelectorAll('a[href^="#"]')];
+  const map = new Map(links.map(a => [a.getAttribute('href').slice(1), a]));
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        links.forEach(l => l.classList.remove('active'));
+        const a = map.get(e.target.id); if (a) a.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-15% 0px -75% 0px' });
+  document.querySelectorAll('.content section').forEach(s => io.observe(s));
+</script>
+</body>
+</html>

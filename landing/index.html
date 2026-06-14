@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MagnetBox — your own self-hosted download box</title>
+<meta name="description" content="A self-hosted magnet, torrent and direct-link downloader you run on your own server. One binary, in-app streaming, multi-user with 2FA, full admin console. Your server, your data." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d1014'/%3E%3Ctext x='16' y='22' font-size='18' font-family='sans-serif' font-weight='700' fill='%2341d6a3' text-anchor='middle'%3EM%3C/text%3E%3C/svg%3E" />
+<style>
+  :root {
+    --bg: #0b0e12;
+    --bg-2: #0d1117;
+    --surface: #141b23;
+    --surface-2: #1b242e;
+    --line: #26313c;
+    --text: #e9eef4;
+    --muted: #8b97a6;
+    --faint: #5c6773;
+    --accent: #41d6a3;
+    --accent-2: #38bdf8;
+    --accent-dim: #1f6b54;
+    --danger: #ff6b6b;
+    --warn: #ffcf5c;
+    --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Inter, sans-serif;
+    --shadow: 0 30px 80px -40px rgba(0,0,0,.9);
+    --maxw: 1120px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans);
+    line-height: 1.6; -webkit-font-smoothing: antialiased; overflow-x: hidden;
+  }
+  a { color: inherit; text-decoration: none; }
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+  .eyebrow { font: 600 12px var(--mono); letter-spacing: .22em; text-transform: uppercase; color: var(--accent); }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px; font: 600 14px var(--sans);
+    padding: 12px 20px; border-radius: 10px; cursor: pointer; border: 1px solid transparent;
+    transition: transform .12s ease, background .15s, border-color .15s, box-shadow .15s;
+  }
+  .btn:active { transform: translateY(1px); }
+  .btn.primary { background: var(--accent); color: #042018; box-shadow: 0 8px 28px -10px rgba(65,214,163,.6); }
+  .btn.primary:hover { background: #54e6b3; box-shadow: 0 10px 34px -8px rgba(65,214,163,.7); }
+  .btn.ghost { background: transparent; border-color: var(--line); color: var(--text); }
+  .btn.ghost:hover { border-color: #3a4a5c; background: var(--surface); }
+
+  /* ---------- nav ---------- */
+  header.nav {
+    position: sticky; top: 0; z-index: 50; backdrop-filter: blur(12px);
+    background: rgba(11,14,18,.72); border-bottom: 1px solid transparent;
+    transition: border-color .2s, background .2s;
+  }
+  header.nav.scrolled { border-bottom-color: var(--line); }
+  .nav-inner { display: flex; align-items: center; gap: 18px; height: 64px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 18px; letter-spacing: -.01em; }
+  .brand .logo { width: 30px; height: 30px; border-radius: 8px; background: linear-gradient(135deg, var(--accent), var(--accent-dim)); display: grid; place-items: center; color: #042018; font-weight: 800; }
+  .brand .box { color: var(--accent); }
+  .nav-links { display: flex; gap: 28px; margin-left: 24px; }
+  .nav-links a { color: var(--muted); font-size: 14px; font-weight: 500; transition: color .15s; }
+  .nav-links a:hover { color: var(--text); }
+  .nav-cta { margin-left: auto; display: flex; gap: 10px; align-items: center; }
+  .menu-btn { display: none; background: none; border: 0; color: var(--text); font-size: 22px; cursor: pointer; }
+
+  /* ---------- hero ---------- */
+  .hero { position: relative; padding: 86px 0 40px; }
+  .hero::before {
+    content: ""; position: absolute; inset: -200px 0 auto 0; height: 620px; z-index: -1;
+    background: radial-gradient(680px 360px at 72% 8%, rgba(56,189,248,.14), transparent 60%),
+                radial-gradient(720px 420px at 22% 0%, rgba(65,214,163,.16), transparent 60%);
+    pointer-events: none;
+  }
+  .hero-grid { display: grid; grid-template-columns: 1.05fr 1fr; gap: 48px; align-items: center; }
+  .hero h1 { font-size: clamp(2.4rem, 1.2rem + 4.2vw, 4.1rem); line-height: 1.02; letter-spacing: -.03em; margin: 18px 0 0; font-weight: 800; }
+  .hero h1 .grad { background: linear-gradient(100deg, var(--accent), var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .hero p.sub { color: var(--muted); font-size: clamp(1rem, .96rem + .3vw, 1.18rem); max-width: 36ch; margin: 22px 0 0; }
+  .hero .cta-row { display: flex; gap: 12px; margin-top: 30px; flex-wrap: wrap; }
+  .hero .note { margin-top: 18px; color: var(--faint); font: 12.5px var(--mono); display: flex; gap: 16px; flex-wrap: wrap; }
+  .hero .note span { display: inline-flex; align-items: center; gap: 6px; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+
+  /* ---------- product mock ---------- */
+  .mock { border-radius: 14px; border: 1px solid var(--line); background: linear-gradient(180deg, var(--surface), var(--bg-2)); box-shadow: var(--shadow); overflow: hidden; transform: perspective(1400px) rotateY(-7deg) rotateX(3deg); transition: transform .4s ease; }
+  .mock:hover { transform: perspective(1400px) rotateY(-2deg) rotateX(1deg); }
+  .mock .bar { display: flex; align-items: center; gap: 7px; padding: 11px 14px; border-bottom: 1px solid var(--line); background: #0c1219; }
+  .mock .bar i { width: 11px; height: 11px; border-radius: 50%; background: #2b3744; display: inline-block; }
+  .mock .bar i:nth-child(1){ background:#ff5f57 } .mock .bar i:nth-child(2){ background:#febc2e } .mock .bar i:nth-child(3){ background:#28c840 }
+  .mock .bar .u { margin-left: auto; display: flex; align-items: center; gap: 7px; font: 11px var(--mono); color: var(--muted); }
+  .mock .av { width: 20px; height: 20px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), var(--accent-dim)); color: #042018; display: grid; place-items: center; font: 700 10px var(--sans); }
+  .mock .body { padding: 14px; }
+  .mock .stats { display: flex; gap: 16px; font: 11px var(--mono); color: var(--muted); margin-bottom: 12px; flex-wrap: wrap; }
+  .mock .stats b { color: var(--accent); }
+  .mock .card { background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; padding: 11px 13px; margin-bottom: 9px; }
+  .mock .card .top { display: flex; align-items: center; gap: 8px; }
+  .mock .card .name { font-size: 13px; font-weight: 600; }
+  .mock .card .badge { margin-left: auto; font: 600 9px var(--mono); padding: 3px 7px; border-radius: 999px; text-transform: uppercase; }
+  .mock .badge.live { color: var(--accent); background: rgba(65,214,163,.12); }
+  .mock .badge.done { color: #042018; background: var(--accent); }
+  .mock .spd { font: 11px var(--mono); color: var(--accent); }
+  .mock .prog { height: 5px; background: #0c1219; border-radius: 3px; margin-top: 9px; overflow: hidden; }
+  .mock .prog > b { display: block; height: 100%; background: linear-gradient(90deg, var(--accent-dim), var(--accent)); }
+  .mock .meta { font: 10.5px var(--mono); color: var(--faint); margin-top: 7px; }
+
+  /* ---------- sections ---------- */
+  section { padding: 76px 0; }
+  .sec-head { max-width: 640px; }
+  .sec-head h2 { font-size: clamp(1.8rem, 1.2rem + 2vw, 2.7rem); letter-spacing: -.02em; margin: 12px 0 0; font-weight: 800; }
+  .sec-head p { color: var(--muted); font-size: 1.05rem; margin: 14px 0 0; }
+
+  .strip { display: flex; gap: 14px; flex-wrap: wrap; padding: 20px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .chip { display: inline-flex; align-items: center; gap: 8px; font: 12.5px var(--mono); color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 8px 14px; }
+  .chip b { color: var(--text); font-weight: 600; }
+
+  /* bento */
+  .bento { display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; margin-top: 40px; }
+  .feat { background: linear-gradient(180deg, var(--surface), var(--bg-2)); border: 1px solid var(--line); border-radius: 16px; padding: 22px; grid-column: span 2; transition: border-color .18s, transform .18s, box-shadow .18s; }
+  .feat:hover { border-color: #33475a; transform: translateY(-3px); box-shadow: var(--shadow); }
+  .feat.big { grid-column: span 3; }
+  .feat .ic { width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center; font-size: 19px; background: rgba(65,214,163,.10); border: 1px solid var(--accent-dim); margin-bottom: 14px; }
+  .feat h3 { margin: 0 0 6px; font-size: 16px; }
+  .feat p { margin: 0; color: var(--muted); font-size: 13.5px; }
+
+  /* steps */
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 40px; counter-reset: s; }
+  .step { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 24px; position: relative; }
+  .step::before { counter-increment: s; content: counter(s); position: absolute; top: 18px; right: 20px; font: 800 40px var(--sans); color: var(--surface-2); }
+  .step h3 { margin: 14px 0 6px; font-size: 17px; }
+  .step p { color: var(--muted); font-size: 13.5px; margin: 0; }
+  .step code { font: 12px var(--mono); color: var(--accent); background: #0c1219; padding: 2px 6px; border-radius: 5px; }
+
+  /* support */
+  .support-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 34px; }
+
+  /* faq */
+  .faq { max-width: 760px; margin-top: 36px; }
+  details.q { border-bottom: 1px solid var(--line); padding: 4px 0; }
+  details.q summary { cursor: pointer; list-style: none; padding: 18px 0; font-weight: 600; font-size: 15.5px; display: flex; align-items: center; gap: 12px; }
+  details.q summary::-webkit-details-marker { display: none; }
+  details.q summary::before { content: "+"; color: var(--accent); font-weight: 700; font-size: 20px; width: 16px; }
+  details.q[open] summary::before { content: "–"; }
+  details.q p { margin: 0 0 18px 28px; color: var(--muted); font-size: 14px; }
+
+  /* cta band */
+  .cta-band { text-align: center; background: linear-gradient(180deg, var(--surface), var(--bg-2)); border: 1px solid var(--line); border-radius: 22px; padding: 52px 24px; box-shadow: var(--shadow); }
+  .cta-band h2 { font-size: clamp(1.7rem, 1.2rem + 2vw, 2.5rem); margin: 0; letter-spacing: -.02em; }
+  .cta-band p { color: var(--muted); margin: 14px auto 26px; max-width: 46ch; }
+
+  footer { border-top: 1px solid var(--line); padding: 40px 0; margin-top: 40px; color: var(--faint); }
+  .foot-inner { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+  footer a { color: var(--muted); } footer a:hover { color: var(--text); }
+  .legal { width: 100%; color: var(--faint); font-size: 12px; margin-top: 8px; line-height: 1.6; }
+
+  .reveal { opacity: 0; transform: translateY(16px); transition: opacity .6s ease, transform .6s ease; }
+  .reveal.in { opacity: 1; transform: none; }
+
+  @media (max-width: 880px) {
+    .hero-grid { grid-template-columns: 1fr; }
+    .mock { transform: none; margin-top: 8px; }
+    .nav-links { display: none; }
+    .menu-btn { display: block; }
+    .nav-links.open { display: flex; position: absolute; top: 64px; left: 0; right: 0; flex-direction: column; gap: 0; background: var(--bg-2); border-bottom: 1px solid var(--line); padding: 8px 24px 16px; margin: 0; }
+    .nav-links.open a { padding: 12px 0; border-bottom: 1px solid var(--line); }
+    .bento { grid-template-columns: 1fr; } .feat, .feat.big { grid-column: auto; }
+    .steps { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+  <header class="nav" id="nav">
+    <div class="wrap nav-inner">
+      <a class="brand" href="#top"><span class="logo">M</span>Magnet<span class="box">Box</span></a>
+      <nav class="nav-links" id="navlinks">
+        <a href="#features">Features</a>
+        <a href="#how">How it works</a>
+        <a href="docs.html">Docs</a>
+        <a href="#support">Donate</a>
+        <a href="#faq">FAQ</a>
+        <a href="https://github.com/KenjakuSoft/MAGNET-BOX" target="_blank" rel="noopener">GitHub ↗</a>
+      </nav>
+      <div class="nav-cta">
+        <!-- TODO: point to your live demo instance -->
+        <a class="btn ghost" href="#" target="_blank" rel="noopener">Live demo</a>
+        <a class="btn primary" href="docs.html#quick-start">Get started</a>
+      </div>
+      <button class="menu-btn" id="menuBtn" aria-label="Menu">☰</button>
+    </div>
+  </header>
+
+  <a id="top"></a>
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <span class="eyebrow">Self-hosted · one binary</span>
+        <h1>Your own <span class="grad">download box.</span><br>On your server.</h1>
+        <p class="sub">MagnetBox turns magnets, torrents and direct links into clean HTTP downloads you can grab or stream in the browser — running entirely on hardware you control. Free &amp; open.</p>
+        <div class="cta-row">
+          <a class="btn primary" href="docs.html#quick-start">Get started →</a>
+          <a class="btn ghost" href="#features">See features</a>
+        </div>
+        <div class="note">
+          <span><i class="dot"></i> Your server, your data</span>
+          <span><i class="dot"></i> Free &amp; open-source</span>
+          <span><i class="dot"></i> No subscriptions, no telemetry</span>
+        </div>
+      </div>
+
+      <div class="mock reveal">
+        <div class="bar"><i></i><i></i><i></i><span class="u"><span class="av">A</span> admin ▾</span></div>
+        <div class="body">
+          <div class="stats"><span>⬇ <b>9.4</b> MiB/s</span><span><b>2</b> active · 5 torrents</span><span><b>3</b> downloads</span><span><b>61.2 GB</b> stored</span></div>
+          <div class="card">
+            <div class="top"><span class="name">Sintel.2010.1080p.mkv</span><span class="badge live">live</span></div>
+            <div class="prog"><b style="width:64%"></b></div>
+            <div class="meta">2.6 GB / 4.1 GB · 64% · 6m 12s left · ▶ Play</div>
+          </div>
+          <div class="card">
+            <div class="top"><span class="name">ubuntu-24.04.iso</span><span class="spd">3.1 MiB/s</span><span class="badge live">live</span></div>
+            <div class="prog"><b style="width:38%"></b></div>
+            <div class="meta">1.4 GB / 3.7 GB · 38%</div>
+          </div>
+          <div class="card">
+            <div class="top"><span class="name">dataset-2026.tar.zst</span><span class="badge done">done</span></div>
+            <div class="prog"><b style="width:100%"></b></div>
+            <div class="meta">812 MB · ⤓ Download · ⧉ Link</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="wrap">
+    <div class="strip reveal">
+      <span class="chip"><b>🦀 Rust</b> single binary</span>
+      <span class="chip"><b>▶ In-app</b> streaming</span>
+      <span class="chip"><b>🔐 2FA</b> + invite-only</span>
+      <span class="chip"><b>📘 OpenAPI</b> for Kodi/Stremio tools</span>
+      <span class="chip"><b>🛡 Audited</b> &amp; hardened</span>
+    </div>
+  </div>
+
+  <section id="features">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">Everything in the box</span>
+        <h2>A complete download &amp; stream server — not a toy.</h2>
+        <p>Built like a real product: a slick dashboard, multi-user access control, an admin console, and an API. You host it; it does the rest.</p>
+      </div>
+      <div class="bento">
+        <div class="feat big reveal">
+          <div class="ic">🧲</div>
+          <h3>Magnets, torrents &amp; direct links</h3>
+          <p>Paste a magnet, a .torrent URL, or any http(s) link — it's auto-detected, downloaded at full speed to your server, and turned into a private direct link.</p>
+        </div>
+        <div class="feat big reveal">
+          <div class="ic">▶️</div>
+          <h3>Stream while it downloads</h3>
+          <p>An in-app player streams video and audio with seeking before the download even finishes, and auto-loads subtitle tracks from the torrent.</p>
+        </div>
+        <div class="feat reveal">
+          <div class="ic">👥</div>
+          <h3>Multi-user, invite-only</h3>
+          <p>Demonoid-style closed registration with invite codes you hand out during an open window.</p>
+        </div>
+        <div class="feat reveal">
+          <div class="ic">🔐</div>
+          <h3>Real security</h3>
+          <p>argon2 logins, TOTP 2FA with recovery codes, sessions, SSRF protection, security headers.</p>
+        </div>
+        <div class="feat reveal">
+          <div class="ic">🛠️</div>
+          <h3>Admin console</h3>
+          <p>Live CPU/RAM/disk, per-user bandwidth, audit log, sessions, bulk controls — full control.</p>
+        </div>
+        <div class="feat reveal">
+          <div class="ic">🗑️</div>
+          <h3>Auto-expiry</h3>
+          <p>Optionally delete content after N days to reclaim disk automatically. Keeps the box lean.</p>
+        </div>
+        <div class="feat reveal">
+          <div class="ic">📘</div>
+          <h3>OpenAPI + tokens</h3>
+          <p>Per-user API tokens and an OpenAPI 3.1 spec, so your own scripts and media tools integrate cleanly.</p>
+        </div>
+        <div class="feat reveal">
+          <div class="ic">⚡</div>
+          <h3>Limits &amp; throttles</h3>
+          <p>Global speed caps and per-user concurrency limits keep the server healthy.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="how" style="background: linear-gradient(180deg, transparent, rgba(20,27,35,.5), transparent);">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">Up in minutes</span>
+        <h2>Three steps to your own box.</h2>
+      </div>
+      <div class="steps">
+        <div class="step reveal"><h3>Run the binary</h3><p>Drop the single binary on any Linux server and start it behind <code>Caddy</code> for automatic HTTPS. Systemd unit included.</p></div>
+        <div class="step reveal"><h3>Sign in &amp; lock it down</h3><p>Log in, change the admin password, turn on 2FA, and keep registration invite-only.</p></div>
+        <div class="step reveal"><h3>Add a link</h3><p>Paste a magnet or URL. Watch it download, then stream it in-app or pull the direct link — from any device.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="support">
+    <div class="wrap">
+      <div class="sec-head reveal" style="margin:0 auto;text-align:center">
+        <span class="eyebrow">Free &amp; open</span>
+        <h2>Free to use. Powered by donations.</h2>
+        <p style="margin-left:auto;margin-right:auto">MagnetBox is free, self-hostable software — no license, no subscription, no catch. If it saves you time or money, a donation keeps development and updates going.</p>
+      </div>
+      <div class="support-row reveal">
+        <!-- Sponsor button assumes GitHub Sponsors is enabled for the account. TODO: add your Ko-fi / PayPal links. -->
+        <a class="btn primary" href="https://github.com/sponsors/KenjakuSoft" target="_blank" rel="noopener">💚 Sponsor on GitHub</a>
+        <a class="btn ghost" href="#" target="_blank" rel="noopener">☕ Ko-fi</a>
+        <a class="btn ghost" href="#" target="_blank" rel="noopener">💳 PayPal</a>
+      </div>
+      <p style="color:var(--faint);font-size:12.5px;margin-top:18px;text-align:center">Every contribution is optional and goes straight into maintenance, security fixes and new features. Thank you. 🙏</p>
+    </div>
+  </section>
+
+  <section id="faq">
+    <div class="wrap">
+      <div class="sec-head reveal"><span class="eyebrow">Questions</span><h2>Good to know.</h2></div>
+      <div class="faq reveal">
+        <details class="q"><summary>Is it really free?</summary><p>Yes. MagnetBox is free, self-hostable software — no license key, no subscription. Donations are optional and simply fund continued development. You get the single binary plus deploy files and docs; you run it on your own server and we never see your data.</p></details>
+        <details class="q"><summary>Is this legal?</summary><p>The software is a neutral, general-purpose download/seedbox tool — like qBittorrent or Plex. Use it for content you have the right to download (your own files, Linux ISOs, Creative-Commons and licensed media). You're responsible for what you do on your own server.</p></details>
+        <details class="q"><summary>What do I need to run it?</summary><p>Any small Linux VPS (≈2 vCPU / 4 GB RAM) with disk for your downloads and a domain. A starter box runs a few dollars a month. The README has a complete beginner deploy guide.</p></details>
+        <details class="q"><summary>Does it phone home or need our servers?</summary><p>No. It runs entirely on your machine. There's no telemetry and no dependency on us to keep working.</p></details>
+        <details class="q"><summary>Can other apps use it?</summary><p>Yes — there's an OpenAPI 3.1 spec and per-user API tokens, so your scripts and media tools can drive it programmatically.</p></details>
+        <details class="q"><summary>How can I support the project?</summary><p>Donations (GitHub Sponsors, Ko-fi, PayPal) are the main way — they fund maintenance, security fixes and new features. Sharing the project and reporting bugs helps just as much.</p></details>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="cta-band reveal">
+        <h2>Run your own download box today.</h2>
+        <p>One binary. Your server. Full control. Free &amp; open-source.</p>
+        <a class="btn primary" href="docs.html#quick-start">Get started →</a>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="wrap">
+      <div class="foot-inner">
+        <a class="brand" href="#top" style="font-size:16px"><span class="logo" style="width:24px;height:24px;font-size:13px">M</span>Magnet<span class="box">Box</span></a>
+        <span style="margin-left:auto"></span>
+        <a href="#features">Features</a><a href="#support">Donate</a><a href="#faq">FAQ</a>
+        <a href="docs.html">Docs</a>
+        <a href="https://github.com/KenjakuSoft/MAGNET-BOX" target="_blank" rel="noopener">GitHub</a>
+        <span>© <span id="yr"></span> MagnetBox</span>
+        <p class="legal">MagnetBox is self-hosted software for managing your own downloads. Use it only for content you have the legal right to download and store. The authors are not responsible for how individual operators use their own instances.</p>
+      </div>
+    </div>
+  </footer>
+
+<script>
+  // mobile menu
+  const ml = document.getElementById('navlinks'), mb = document.getElementById('menuBtn');
+  mb.addEventListener('click', () => ml.classList.toggle('open'));
+  ml.querySelectorAll('a').forEach(a => a.addEventListener('click', () => ml.classList.remove('open')));
+  // nav border on scroll
+  const nav = document.getElementById('nav');
+  const onScroll = () => nav.classList.toggle('scrolled', window.scrollY > 8);
+  onScroll(); addEventListener('scroll', onScroll, { passive: true });
+  // reveal on scroll
+  const io = new IntersectionObserver((es) => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }), { threshold: .12 });
+  document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+  // year
+  document.getElementById('yr').textContent = new Date().getFullYear();
+</script>
+</body>
+</html>

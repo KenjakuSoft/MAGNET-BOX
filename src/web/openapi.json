@@ -1,0 +1,197 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "MagnetBox API",
+    "version": "0.1.0",
+    "description": "Self-hosted magnet/torrent and direct-link downloader. All endpoints except /api/login, /api/login/2fa and /api/register* require authentication: either the session cookie (browser) or an `Authorization: Bearer <token>` header (from the Account page) for scripts and apps."
+  },
+  "servers": [{ "url": "/", "description": "This instance" }],
+  "security": [{ "bearerAuth": [] }, { "cookieAuth": [] }],
+  "tags": [
+    { "name": "auth", "description": "Login, 2FA, registration" },
+    { "name": "torrents", "description": "Add and control torrents" },
+    { "name": "downloads", "description": "Direct-link downloads" },
+    { "name": "files", "description": "Download / stream files and subtitles" },
+    { "name": "account", "description": "Your account, API token, 2FA" },
+    { "name": "admin", "description": "Admin-only management" }
+  ],
+  "paths": {
+    "/api/login": {
+      "post": {
+        "tags": ["auth"], "summary": "Log in with username + password",
+        "security": [],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginRequest" } } } },
+        "responses": {
+          "200": { "description": "Session created, or 2FA required", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginResponse" } } } },
+          "401": { "description": "Invalid credentials" }
+        }
+      }
+    },
+    "/api/login/2fa": {
+      "post": {
+        "tags": ["auth"], "summary": "Complete login with a 2FA / recovery code",
+        "security": [],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["challenge", "code"], "properties": { "challenge": { "type": "string" }, "code": { "type": "string", "description": "6-digit TOTP or a recovery code" } } } } } },
+        "responses": { "200": { "description": "Session created" }, "401": { "description": "Invalid code" } }
+      }
+    },
+    "/api/logout": {
+      "post": { "tags": ["auth"], "summary": "End the current session", "responses": { "200": { "description": "OK" } } }
+    },
+    "/api/register/status": {
+      "get": { "tags": ["auth"], "summary": "Is registration currently open?", "security": [], "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "object", "properties": { "open": { "type": "boolean" } } } } } } } }
+    },
+    "/api/register": {
+      "post": {
+        "tags": ["auth"], "summary": "Register with an invite code (when open)", "security": [],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["code", "username", "email", "password"], "properties": { "code": { "type": "string" }, "username": { "type": "string" }, "email": { "type": "string" }, "password": { "type": "string", "minLength": 8 } } } } } },
+        "responses": { "200": { "description": "Account created" }, "400": { "description": "Closed, invalid code, or bad input" } }
+      }
+    },
+    "/api/torrents": {
+      "get": { "tags": ["torrents"], "summary": "List all torrents with live progress",
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "object", "properties": { "torrents": { "type": "array", "items": { "$ref": "#/components/schemas/Torrent" } }, "adding": { "type": "integer" }, "errors": { "type": "array", "items": { "type": "string" } } } } } } } } }
+    },
+    "/api/add": {
+      "post": {
+        "tags": ["torrents"], "summary": "Add a magnet, .torrent URL, or http(s) link (auto-detected)",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AddRequest" } } } },
+        "responses": { "200": { "description": "Added", "content": { "application/json": { "schema": { "type": "object", "properties": { "ok": { "type": "boolean" }, "kind": { "type": "string", "enum": ["torrent", "link"] }, "id": { "type": "integer" } } } } } }, "400": { "description": "Bad source" }, "429": { "description": "Per-user download limit reached" } }
+      }
+    },
+    "/api/upload": {
+      "post": {
+        "tags": ["torrents"], "summary": "Add by uploading raw .torrent bytes",
+        "parameters": [ { "name": "paused", "in": "query", "schema": { "type": "boolean" } }, { "name": "trackers", "in": "query", "schema": { "type": "boolean" } } ],
+        "requestBody": { "required": true, "content": { "application/octet-stream": { "schema": { "type": "string", "format": "binary" } } } },
+        "responses": { "200": { "description": "Added" }, "400": { "description": "Empty/invalid torrent" } }
+      }
+    },
+    "/api/torrents/{id}/files": {
+      "post": { "tags": ["torrents"], "summary": "Set which files to download",
+        "parameters": [ { "$ref": "#/components/parameters/Id" } ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "files": { "type": "array", "items": { "type": "integer" } } } } } } },
+        "responses": { "200": { "description": "OK" } } }
+    },
+    "/api/torrents/{id}/pause": { "post": { "tags": ["torrents"], "summary": "Pause a torrent", "parameters": [ { "$ref": "#/components/parameters/Id" } ], "responses": { "200": { "description": "OK" } } } },
+    "/api/torrents/{id}/resume": { "post": { "tags": ["torrents"], "summary": "Resume a torrent", "parameters": [ { "$ref": "#/components/parameters/Id" } ], "responses": { "200": { "description": "OK" } } } },
+    "/api/torrents/{id}/delete": {
+      "post": { "tags": ["torrents"], "summary": "Remove a torrent",
+        "parameters": [ { "$ref": "#/components/parameters/Id" }, { "name": "files", "in": "query", "schema": { "type": "boolean" }, "description": "Also delete downloaded files" } ],
+        "responses": { "200": { "description": "OK" } } }
+    },
+    "/api/links": {
+      "get": { "tags": ["downloads"], "summary": "List direct-link downloads",
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "object", "properties": { "downloads": { "type": "array", "items": { "$ref": "#/components/schemas/Download" } } } } } } } } }
+    },
+    "/api/links/{id}/delete": {
+      "post": { "tags": ["downloads"], "summary": "Remove a direct download",
+        "parameters": [ { "$ref": "#/components/parameters/Id" }, { "name": "files", "in": "query", "schema": { "type": "boolean" } } ],
+        "responses": { "200": { "description": "OK" } } }
+    },
+    "/dl/{id}": {
+      "get": { "tags": ["files"], "summary": "Download a finished direct-link file (Range supported)", "parameters": [ { "$ref": "#/components/parameters/Id" } ], "responses": { "200": { "description": "File bytes" }, "206": { "description": "Partial content" } } }
+    },
+    "/download/{id}/{file}": {
+      "get": { "tags": ["files"], "summary": "Download a torrent file as attachment (Range)",
+        "parameters": [ { "$ref": "#/components/parameters/Id" }, { "$ref": "#/components/parameters/File" } ],
+        "responses": { "200": { "description": "File bytes" }, "206": { "description": "Partial content" } } }
+    },
+    "/stream/{id}/{file}": {
+      "get": { "tags": ["files"], "summary": "Stream a torrent file inline (Range; plays while downloading)",
+        "parameters": [ { "$ref": "#/components/parameters/Id" }, { "$ref": "#/components/parameters/File" } ],
+        "responses": { "200": { "description": "File bytes" }, "206": { "description": "Partial content" } } }
+    },
+    "/subtitle/{id}/{file}": {
+      "get": { "tags": ["files"], "summary": "A torrent's .srt converted to WebVTT",
+        "parameters": [ { "$ref": "#/components/parameters/Id" }, { "$ref": "#/components/parameters/File" } ],
+        "responses": { "200": { "description": "text/vtt" } } }
+    },
+    "/api/me": {
+      "get": { "tags": ["account"], "summary": "Current user identity", "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "object", "properties": { "username": { "type": "string" }, "role": { "type": "string", "enum": ["admin", "user"] } } } } } } } }
+    },
+    "/api/me/password": {
+      "post": { "tags": ["account"], "summary": "Change your password",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["old", "new"], "properties": { "old": { "type": "string" }, "new": { "type": "string", "minLength": 8 } } } } } },
+        "responses": { "200": { "description": "OK" }, "400": { "description": "Wrong current password / too short" } } }
+    },
+    "/api/account": {
+      "get": { "tags": ["account"], "summary": "Account details, API token, 2FA status",
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Account" } } } } } }
+    },
+    "/api/account/token": {
+      "post": { "tags": ["account"], "summary": "Generate / regenerate your API token", "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "object", "properties": { "ok": { "type": "boolean" }, "token": { "type": "string" } } } } } } } }
+    },
+    "/api/account/logout-others": {
+      "post": { "tags": ["account"], "summary": "Sign out all your other sessions", "responses": { "200": { "description": "OK" } } }
+    },
+    "/api/account/2fa/start": {
+      "post": { "tags": ["account"], "summary": "Begin 2FA enrollment", "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "object", "properties": { "ok": { "type": "boolean" }, "secret": { "type": "string" }, "url": { "type": "string" }, "qr": { "type": "string", "description": "SVG" } } } } } } } }
+    },
+    "/api/account/2fa/confirm": {
+      "post": { "tags": ["account"], "summary": "Confirm 2FA with a code; returns recovery codes",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["code"], "properties": { "code": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "object", "properties": { "ok": { "type": "boolean" }, "recovery_codes": { "type": "array", "items": { "type": "string" } } } } } } } } }
+    },
+    "/api/account/2fa/disable": {
+      "post": { "tags": ["account"], "summary": "Disable 2FA (requires password)",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["password"], "properties": { "password": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "OK" } } }
+    },
+    "/api/admin/overview": { "get": { "tags": ["admin"], "summary": "System + engine + host stats", "responses": { "200": { "description": "OK" } } } },
+    "/api/admin/activity": { "get": { "tags": ["admin"], "summary": "Audit log", "responses": { "200": { "description": "OK" } } } },
+    "/api/admin/sessions": { "get": { "tags": ["admin"], "summary": "List active sessions", "responses": { "200": { "description": "OK" } } } },
+    "/api/admin/config": {
+      "get": { "tags": ["admin"], "summary": "Get access config", "responses": { "200": { "description": "OK" } } },
+      "post": { "tags": ["admin"], "summary": "Set access config (registration / maintenance / concurrency)",
+        "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "registration_open": { "type": "boolean" }, "maintenance": { "type": "boolean" }, "max_concurrent_downloads": { "type": "integer" } } } } } },
+        "responses": { "200": { "description": "OK" } } }
+    },
+    "/api/admin/invites": {
+      "get": { "tags": ["admin"], "summary": "List invite codes", "responses": { "200": { "description": "OK" } } },
+      "post": { "tags": ["admin"], "summary": "Create an invite code",
+        "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "max_uses": { "type": "integer" }, "expires_days": { "type": "integer" }, "note": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "OK" } } }
+    },
+    "/api/users": {
+      "get": { "tags": ["admin"], "summary": "List users", "responses": { "200": { "description": "OK" } } },
+      "post": { "tags": ["admin"], "summary": "Create a user",
+        "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "username": { "type": "string" }, "password": { "type": "string" }, "role": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "OK" } } }
+    },
+    "/api/settings": {
+      "get": { "tags": ["admin"], "summary": "Get global speed limits", "responses": { "200": { "description": "OK" } } },
+      "post": { "tags": ["admin"], "summary": "Set global speed limits (bytes/sec, 0=unlimited)",
+        "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "download_bps": { "type": "integer", "nullable": true }, "upload_bps": { "type": "integer", "nullable": true } } } } } },
+        "responses": { "200": { "description": "OK" } } }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer", "description": "API token from the Account page" },
+      "cookieAuth": { "type": "apiKey", "in": "cookie", "name": "mb_session" }
+    },
+    "parameters": {
+      "Id": { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } },
+      "File": { "name": "file", "in": "path", "required": true, "schema": { "type": "integer" }, "description": "File index within the torrent" }
+    },
+    "schemas": {
+      "LoginRequest": { "type": "object", "required": ["username", "password"], "properties": { "username": { "type": "string" }, "password": { "type": "string" } } },
+      "LoginResponse": { "type": "object", "properties": { "ok": { "type": "boolean" }, "twofa": { "type": "boolean" }, "challenge": { "type": "string" } } },
+      "AddRequest": { "type": "object", "required": ["source"], "properties": { "source": { "type": "string", "description": "magnet:, https://....torrent, or any http(s) link" }, "paused": { "type": "boolean" }, "trackers": { "type": "boolean", "description": "Add public trackers (not for private trackers)" } } },
+      "Torrent": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" }, "name": { "type": "string" }, "info_hash": { "type": "string" },
+          "state": { "type": "string" }, "finished": { "type": "boolean" }, "paused": { "type": "boolean" },
+          "progress_bytes": { "type": "integer" }, "total_bytes": { "type": "integer" }, "download_mbps": { "type": "number" },
+          "error": { "type": "string", "nullable": true },
+          "files": { "type": "array", "items": { "$ref": "#/components/schemas/TorrentFile" } }
+        }
+      },
+      "TorrentFile": { "type": "object", "properties": { "index": { "type": "integer" }, "name": { "type": "string" }, "len": { "type": "integer" }, "downloaded": { "type": "integer" }, "selected": { "type": "boolean" } } },
+      "Download": { "type": "object", "properties": { "id": { "type": "integer" }, "url": { "type": "string" }, "filename": { "type": "string" }, "owner": { "type": "string" }, "total": { "type": "integer", "nullable": true }, "downloaded": { "type": "integer" }, "status": { "type": "string", "enum": ["downloading", "done", "error"] }, "error": { "type": "string", "nullable": true } } },
+      "Account": { "type": "object", "properties": { "username": { "type": "string" }, "role": { "type": "string" }, "created": { "type": "integer" }, "api_token": { "type": "string", "nullable": true }, "twofa": { "type": "boolean" }, "recovery_left": { "type": "integer" }, "sessions": { "type": "integer" } } }
+    }
+  }
+}

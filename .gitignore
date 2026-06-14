@@ -1,0 +1,28 @@
+# --- Rust build artifacts ---
+/target
+
+# --- Runtime data (NEVER commit: contains accounts, password hashes, tokens) ---
+/magnetbox-data/
+/downloads/
+*.db
+*.db-journal
+
+# Any stray runtime state files if produced in the project root
+/settings.json
+/usage.json
+/invites.json
+/auth_config.json
+/torrent_added.json
+
+# --- Local tooling / editor config ---
+/.claude/
+.vscode/
+.idea/
+
+# --- Internal (not for the public repo) ---
+/docs/SELLING-AND-HOSTING.md
+
+# --- OS junk ---
+.DS_Store
+Thumbs.db
+desktop.ini

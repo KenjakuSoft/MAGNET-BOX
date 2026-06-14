@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MagnetBox · API</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d1014'/%3E%3Ctext x='16' y='22' font-size='18' font-family='sans-serif' font-weight='700' fill='%2341d6a3' text-anchor='middle'%3EM%3C/text%3E%3C/svg%3E" />
+<style>
+  :root { --bg:#0d1014; --surface:#1a212b; --surface-2:#222c39; --line:#2b3744; --text:#e6edf3; --muted:#8b97a6; --accent:#41d6a3; --accent-dim:#1f6b54; --warn:#ffcf5c; --danger:#ff6b6b;
+    --mono: ui-monospace, "Cascadia Code", Consolas, monospace; --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans); }
+  header { display: flex; align-items: baseline; gap: 14px; padding: 22px 28px 8px; }
+  header h1 { margin: 0; font-size: 22px; } header h1 .box { color: var(--accent); }
+  header .sp { margin-left: auto; }
+  a.link { color: var(--accent); text-decoration: none; font-size: 13px; } a.link:hover { text-decoration: underline; }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 8px 22px 70px; }
+  .lead { color: var(--muted); font-size: 13.5px; line-height: 1.6; }
+  .lead code { color: var(--accent); font-family: var(--mono); }
+  .grp { margin-top: 30px; }
+  .grp h2 { font-size: 16px; margin: 0 0 4px; text-transform: capitalize; }
+  .grp .gdesc { color: var(--muted); font-size: 12.5px; margin: 0 0 12px; }
+  .op { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 8px; overflow: hidden; }
+  .op summary { display: flex; align-items: center; gap: 12px; padding: 11px 14px; cursor: pointer; list-style: none; }
+  .op summary::-webkit-details-marker { display: none; }
+  .m { font: 700 11px var(--mono); padding: 4px 8px; border-radius: 6px; min-width: 52px; text-align: center; color: #06211a; }
+  .m.get { background: var(--accent); } .m.post { background: var(--warn); } .m.put { background: #6ab0ff; } .m.delete { background: var(--danger); color: #fff; }
+  .path { font: 13px var(--mono); }
+  .sum { color: var(--muted); font-size: 12.5px; margin-left: auto; text-align: right; }
+  .lock { color: var(--muted); font-size: 11px; }
+  .body { padding: 4px 16px 16px; border-top: 1px solid var(--line); font-size: 13px; }
+  .body h4 { margin: 14px 0 6px; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+  table { width: 100%; border-collapse: collapse; }
+  td, th { text-align: left; padding: 6px 8px; border-bottom: 1px solid #20272f; font-size: 12.5px; vertical-align: top; }
+  th { color: var(--muted); font: 600 10.5px var(--mono); text-transform: uppercase; }
+  .mono { font-family: var(--mono); }
+  pre { background: #0c1117; border: 1px solid var(--line); border-radius: 8px; padding: 12px; overflow-x: auto; font: 12px var(--mono); color: #b8c2cf; }
+  .pill { font: 600 10px var(--mono); padding: 2px 7px; border-radius: 999px; background: var(--surface-2); color: var(--muted); }
+  .req { color: var(--danger); }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Magnet<span class="box">Box</span> · API</h1>
+    <span class="sp"></span>
+    <a class="link" href="/api/openapi.json">openapi.json</a>
+    <a class="link" href="/account" style="margin-left:14px">Account</a>
+    <a class="link" href="/" style="margin-left:14px">← back to app</a>
+  </header>
+  <div class="wrap">
+    <p class="lead" id="intro">Loading…</p>
+    <div id="auth"></div>
+    <div id="groups"></div>
+  </div>
+<script>
+  const $ = s => document.querySelector(s);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  function schemaName(s) {
+    if (!s) return '';
+    if (s.$ref) return s.$ref.split('/').pop();
+    if (s.type === 'array') return schemaName(s.items) + '[]';
+    return s.type || 'object';
+  }
+
+  function paramsTable(params) {
+    if (!params || !params.length) return '';
+    const rows = params.map(p => {
+      const ref = p.$ref ? RESOLVED.parameters[p.$ref.split('/').pop()] : p;
+      return `<tr><td class="mono">${esc(ref.name)}</td><td class="pill">${esc(ref.in)}</td><td>${esc((ref.schema && ref.schema.type) || '')}</td><td>${esc(ref.description || '')}</td></tr>`;
+    }).join('');
+    return `<h4>Parameters</h4><table><thead><tr><th>Name</th><th>In</th><th>Type</th><th>Description</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+
+  function bodyBlock(rb) {
+    if (!rb) return '';
+    const ct = Object.keys(rb.content || {})[0];
+    if (!ct) return '';
+    const sch = rb.content[ct].schema;
+    const props = (sch && sch.properties) || (sch && sch.$ref && (RESOLVED.schemas[sch.$ref.split('/').pop()] || {}).properties);
+    let rows = '';
+    if (props) {
+      const required = (sch.required || []);
+      rows = Object.entries(props).map(([k, v]) =>
+        `<tr><td class="mono">${esc(k)}${required.includes(k) ? ' <span class="req">*</span>' : ''}</td><td>${esc(schemaName(v))}</td><td>${esc(v.description || '')}</td></tr>`).join('');
+    }
+    return `<h4>Request body <span class="pill">${esc(ct)}</span></h4>` + (rows ? `<table><thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead><tbody>${rows}</tbody></table>` : `<p class="mono">${esc(schemaName(sch))}</p>`);
+  }
+
+  function respBlock(responses) {
+    const rows = Object.entries(responses || {}).map(([code, r]) =>
+      `<tr><td class="mono">${esc(code)}</td><td>${esc(r.description || '')}</td></tr>`).join('');
+    return `<h4>Responses</h4><table><tbody>${rows}</tbody></table>`;
+  }
+
+  let RESOLVED = { parameters: {}, schemas: {} };
+
+  async function load() {
+    const spec = await (await fetch('/api/openapi.json')).json();
+    RESOLVED.parameters = (spec.components && spec.components.parameters) || {};
+    RESOLVED.schemas = (spec.components && spec.components.schemas) || {};
+    $('#intro').innerHTML = esc(spec.info.description);
+
+    const schemes = (spec.components && spec.components.securitySchemes) || {};
+    $('#auth').innerHTML = `<p class="lead" style="margin-top:10px">🔑 Auth: <span class="pill">Bearer token</span> via <code>Authorization: Bearer &lt;token&gt;</code> (generate one on the Account page) or the session cookie.</p>`;
+
+    // group operations by tag
+    const groups = {};
+    const tagDesc = {};
+    (spec.tags || []).forEach(t => { groups[t.name] = []; tagDesc[t.name] = t.description; });
+    for (const [path, methods] of Object.entries(spec.paths)) {
+      for (const [method, op] of Object.entries(methods)) {
+        const tag = (op.tags && op.tags[0]) || 'other';
+        (groups[tag] = groups[tag] || []).push({ path, method, op });
+      }
+    }
+
+    $('#groups').innerHTML = Object.entries(groups).map(([tag, ops]) => {
+      if (!ops.length) return '';
+      const items = ops.map(({ path, method, op }) => {
+        const open = (op.security && op.security.length === 0) ? '' : ' 🔒';
+        return `<details class="op">
+          <summary>
+            <span class="m ${method}">${method.toUpperCase()}</span>
+            <span class="path">${esc(path)}</span>
+            <span class="sum">${esc(op.summary || '')}<span class="lock">${open}</span></span>
+          </summary>
+          <div class="body">${paramsTable(op.parameters)}${bodyBlock(op.requestBody)}${respBlock(op.responses)}</div>
+        </details>`;
+      }).join('');
+      return `<div class="grp"><h2>${esc(tag)}</h2><div class="gdesc">${esc(tagDesc[tag] || '')}</div>${items}</div>`;
+    }).join('');
+  }
+  load().catch(e => { $('#intro').textContent = 'Failed to load spec: ' + e.message; });
+</script>
+</body>
+</html>

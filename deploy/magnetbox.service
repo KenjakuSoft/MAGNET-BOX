@@ -1,0 +1,42 @@
+# systemd unit for MagnetBox.
+# Install to /etc/systemd/system/magnetbox.service, then:
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now magnetbox
+#   journalctl -u magnetbox -f      # logs (the first-run admin password prints here)
+
+[Unit]
+Description=MagnetBox
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=magnetbox
+Group=magnetbox
+WorkingDirectory=/opt/magnetbox
+
+# Behind Caddy (HTTPS) → secure cookies on. Bind localhost only.
+Environment=MAGNETBOX_HTTPS=1
+Environment=MAGNETBOX_BIND=127.0.0.1
+Environment=MAGNETBOX_PORT=8080
+Environment=MAGNETBOX_DIR=/opt/magnetbox/downloads
+Environment=MAGNETBOX_DATA=/opt/magnetbox/data
+# Keep any home-relative state (librqbit session) inside the writable dir.
+Environment=HOME=/opt/magnetbox
+# Optional: set a known first-run admin password instead of a generated one.
+# Environment=MAGNETBOX_ADMIN_USER=admin
+# Environment=MAGNETBOX_ADMIN_PASSWORD=change-this-strong-password
+
+ExecStart=/opt/magnetbox/magnetbox
+Restart=on-failure
+RestartSec=3
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/magnetbox
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MagnetBox · Register</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d1014'/%3E%3Ctext x='16' y='22' font-size='18' font-family='sans-serif' font-weight='700' fill='%2341d6a3' text-anchor='middle'%3EM%3C/text%3E%3C/svg%3E" />
+<style>
+  :root { --bg:#0d1014; --surface:#1a212b; --line:#2b3744; --text:#e6edf3; --muted:#8b97a6; --accent:#41d6a3; --danger:#ff6b6b;
+    --mono: ui-monospace, "Cascadia Code", Consolas, monospace; --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  * { box-sizing: border-box; }
+  body { margin:0; min-height:100vh; display:grid; place-items:center; background:radial-gradient(900px 500px at 50% -10%, #16202b 0%, var(--bg) 60%); color:var(--text); font-family:var(--sans); }
+  .card { width:min(400px,92vw); background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:28px 26px; box-shadow:0 20px 50px -24px #000; }
+  h1 { margin:0 0 2px; font-size:22px; } h1 .box { color:var(--accent); }
+  p.sub { margin:0 0 18px; color:var(--muted); font-size:13px; }
+  label { display:block; font-size:12px; color:var(--muted); margin:14px 0 6px; }
+  input { width:100%; background:#0c1117; color:var(--text); border:1px solid var(--line); border-radius:9px; padding:11px 13px; font:14px var(--sans); outline:none; transition:border-color .15s, box-shadow .15s; }
+  input:focus { border-color:#1f6b54; box-shadow:0 0 0 3px rgba(65,214,163,.12); }
+  button { width:100%; margin-top:20px; background:var(--accent); color:#06211a; border:0; border-radius:9px; padding:12px; font:600 14px var(--sans); cursor:pointer; }
+  button:hover { background:#54e6b3; } button:disabled { opacity:.6; cursor:default; }
+  .err { color:var(--danger); font-size:13px; min-height:18px; margin-top:12px; }
+  .ok { color:var(--accent); font-size:13px; min-height:18px; margin-top:12px; }
+  .foot { margin-top:16px; color:var(--muted); font-size:12px; text-align:center; }
+  .foot a { color:var(--accent); text-decoration:none; }
+  .closed { text-align:center; color:var(--muted); font-size:14px; line-height:1.6; padding:8px 0 4px; }
+  .hidden { display:none; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Magnet<span class="box">Box</span></h1>
+    <p class="sub">Create your account</p>
+
+    <div id="closed" class="closed hidden">
+      🔒 Registration is currently <b>closed</b>.<br>It opens occasionally, by invite only.
+      <div class="foot" style="margin-top:14px"><a href="/login">← back to sign in</a></div>
+    </div>
+
+    <form id="form" class="hidden">
+      <label for="code">Invite code</label>
+      <input id="code" autocomplete="off" spellcheck="false" placeholder="from someone who's already in" />
+      <label for="u">Username</label>
+      <input id="u" autocomplete="username" />
+      <label for="e">Email</label>
+      <input id="e" type="email" autocomplete="email" />
+      <label for="p">Password</label>
+      <input id="p" type="password" autocomplete="new-password" placeholder="min 8 characters" />
+      <button id="btn" type="submit">Create account</button>
+      <div class="err" id="err"></div>
+      <div class="foot"><a href="/login">Already have an account? Sign in</a></div>
+    </form>
+    <div class="ok hidden" id="done"></div>
+  </div>
+<script>
+  const $ = s => document.querySelector(s);
+  (async () => {
+    try {
+      const s = await (await fetch('/api/register/status')).json();
+      $(s.open ? '#form' : '#closed').classList.remove('hidden');
+    } catch (e) { $('#closed').classList.remove('hidden'); }
+  })();
+  $('#form').addEventListener('submit', async e => {
+    e.preventDefault();
+    $('#btn').disabled = true; $('#err').textContent = '';
+    try {
+      const r = await fetch('/api/register', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ code: $('#code').value.trim(), username: $('#u').value.trim(), email: $('#e').value.trim(), password: $('#p').value })
+      });
+      const j = await r.json();
+      if (!r.ok || j.ok === false) throw new Error(j.error || 'registration failed');
+      $('#form').classList.add('hidden');
+      const done = $('#done'); done.classList.remove('hidden');
+      done.innerHTML = '✓ Account created! <a href="/login" style="color:var(--accent)">Sign in →</a>';
+    } catch (err) { $('#err').textContent = err.message; $('#btn').disabled = false; }
+  });
+</script>
+</body>
+</html>
