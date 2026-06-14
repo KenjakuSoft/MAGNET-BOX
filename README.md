@@ -1,73 +1,67 @@
-# MagnetBox
+<div align="center">
 
-A personal, self-hosted **magnet/torrent → direct HTTP download & streaming**
-gateway in a single Rust binary. Paste a magnet or upload a `.torrent`, and get
-clean HTTP links to **download** or **stream** each file in your browser — with
-HTTP Range support, so video seeks and plays *while it's still downloading*.
+# 🧲 MagnetBox
 
-It's built on [**librqbit**](https://github.com/ikatson/rqbit), a mature Rust
+### Your own self-hosted download box — on your server.
+
+Paste a **magnet**, a **`.torrent`**, or any **http(s) link** and get clean HTTP
+links to **download** or **stream** every file right in your browser — with HTTP
+Range support, so video **seeks and plays while it's still downloading**.
+One Rust binary. Your server, your data.
+
+<br>
+
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-41d6a3.svg?style=flat-square)](LICENSE)
+[![Rust](https://img.shields.io/badge/Rust-2021-CE412B?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org)
+[![Engine: librqbit](https://img.shields.io/badge/engine-librqbit-38bdf8?style=flat-square)](https://github.com/ikatson/rqbit)
+[![Single binary](https://img.shields.io/badge/deploy-single_binary-8b5cf6?style=flat-square)](#quick-start)
+<br>
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-Support_development-FF5E5B?style=flat-square&logo=ko-fi&logoColor=white)](https://ko-fi.com/lidaf)
+[![PayPal](https://img.shields.io/badge/PayPal-Donate-00457C?style=flat-square&logo=paypal&logoColor=white)](https://www.paypal.com/donate/?business=JG7J2JMQ8DP38)
+
+**[Features](#-features) · [Quick start](#quick-start) · [Configuration](#-configuration) · [HTTP API](#-http-api) · [Security](#-security-posture) · [Deploy](#-deploy-to-a-vps) · [Donate](#-support)**
+
+</div>
+
+---
+
+> **Free & open · donation-supported.** MagnetBox is free to self-host — no
+> license, no subscription, no telemetry. It runs entirely on hardware you
+> control. If it's useful to you, [support development](#-support) keeps it going.
+
+> [!NOTE]
+> **What this is.** A self-hosted **seedbox with a direct-download & streaming
+> front end**. There's no global cache — your box fetches from the live
+> BitTorrent swarm at seeder speed, and your server's IP participates in the
+> swarm. Use it only for content you have the right to download — your own files,
+> Linux ISOs, Creative-Commons / public-domain media, and the like.
+
+Built on [**librqbit**](https://github.com/ikatson/rqbit), a mature Rust
 BitTorrent engine, so there's no external torrent client to install.
 
-**Free & open · donation-supported.** MagnetBox is free to self-host — no license,
-no subscription. If it's useful to you, [support development »](landing/index.html#support).
-Full documentation lives in [`landing/docs.html`](landing/docs.html).
+---
 
-> ⚠️ **What this is — and isn't.** This is a self-hosted **seedbox with a
-> direct-download front end**, not a clone of Real-Debrid. RD feels instant
-> because it serves from a huge pre-filled cache; a single-user box has **no
-> cache** and must fetch from the live swarm at seeder speed. Your machine's IP
-> also joins the swarm. Use it only for content you have the right to download
-> (your own files, Linux ISOs, Creative Commons / public-domain media, etc.).
+## ✨ Features
 
-## Features
+| | |
+|---|---|
+| 🔗 **Add anything** | Magnet, `.torrent` URL/upload, or a plain http(s) link — auto-detected (torrent engine vs. direct-link downloader). |
+| ▶️ **Stream while downloading** | In-app video/audio player seeks before the file finishes; subtitles auto-loaded from the torrent's `.srt` (→ WebVTT). |
+| ✅ **Pick what to download** | Per-file checkboxes (live), select all/none, and an **add-paused** option to choose files *before* anything downloads. |
+| 🔐 **Login + multi-user** | argon2 passwords, server-side sessions, roles, and a full **admin console** at `/admin`. |
+| 🎟 **Invite-only registration** | Demonoid-style closed sign-up — invite codes (single/multi-use, optional expiry) + an open/close toggle and **maintenance mode**. |
+| 🛡️ **2FA (TOTP)** | Optional per-account, QR enrollment in any authenticator app, with one-time **recovery codes**. |
+| 📈 **Host & usage metrics** | Live **CPU / RAM / disk** in the admin Overview; **per-user bandwidth**, last-seen and IP in the Users table. |
+| 🚦 **Per-user limits** | Admin-set cap on simultaneous direct downloads per user (`0` = unlimited). |
+| 🗑️ **Retention / auto-expiry** | Optionally auto-delete torrents & downloads (and files) older than N days; hourly sweep + "Run cleanup now". |
+| ⚙️ **Settings** | Change password, per-browser defaults, and an admin-only **global speed limit** (persisted). |
+| 🔑 **API + tokens** | Per-user bearer token + **OpenAPI 3.1** spec at `/api/openapi.json` and a reference page at `/docs`. |
+| ⏸ **Full control** | Pause / resume / delete (optionally erasing files), drag-and-drop `.torrent`, batch add, live stats, name filter. |
+| 🦀 **Single binary** | Embedded web UI, binds `127.0.0.1` by default. No database server, no container stack required. |
 
-- 🔐 **Login + multi-user** — argon2 passwords, sessions, and a full **admin
-  console** (`/admin`): live overview/stats, all torrents & downloads with bulk
-  controls, user management, active-session revocation, an audit/activity log,
-  and global settings. Built to sit behind HTTPS on your own domain.
-- 🎟 **Invite-only registration** (Demonoid-style) — a `/register` page gated by
-  **invite codes** (single/multi-use, optional expiry) and a global
-  **registration open/close** toggle you flip during an occasional window. Plus
-  **ban/disable** users, **reset a user's API token**, last-seen/IP tracking, and
-  a **maintenance mode** that locks out everyone but admins.
-- 📈 **Host & usage metrics** — the admin Overview shows live **CPU / RAM / disk**
-  of the server, and the Users table tracks **per-user bandwidth served**
-  (cumulative, persisted across restarts) plus last-seen and IP.
-- 🚦 **Per-user limits** — admin-configurable cap on simultaneous direct downloads
-  per user (anti-abuse; 0 = unlimited), with download ownership shown in the
-  admin Downloads view.
-- 🗑️ **Retention / auto-expiry** — optionally auto-delete torrents & downloads
-  (and their files) older than N days to reclaim disk; runs hourly with a
-  "Run cleanup now" button. `0` = keep forever.
-- ⚙️ **Settings** — user menu with a **Settings** page: change password, per-browser
-  defaults (add-paused / public-trackers), and an admin-only **global speed limit**
-  (persisted, re-applied on restart).
-- 🔗 Add by **magnet**, **`.torrent` URL/upload**, or a plain **http(s) link** —
-  the kind is auto-detected (torrents vs. a direct-link download manager).
-- 🗂️ **Dashboard** with **Torrents** and **Downloads** tabs (direct-link history:
-  name, size, progress, status, re-download).
-- ▶️ **In-app video/audio player** — plays/seeks while downloading, with subtitle
-  tracks auto-loaded from the torrent's `.srt` files (converted to WebVTT).
-- 🔑 **Account page + API token** — per-user bearer token so scripts/apps can
-  drive every endpoint with `Authorization: Bearer <token>`.
-- 📘 **OpenAPI 3.1 spec** at `/api/openapi.json` + a self-contained reference page
-  at `/docs` (no external scripts) — import into Postman/Insomnia or point your
-  Kodi/Stremio-style tooling at it.
-- 📊 **Live stats bar** (speed, active count, items, storage used), **name filter**,
-  **drag-and-drop** `.torrent` files, **batch add** (paste several at once), and
-  direct downloads that **persist across restarts**.
-- ✅ **Pick what to download** — per-file checkboxes (live), select all/none, and an
-  **"add paused"** option to choose files *before* anything downloads.
-- ⏸ **Pause / Resume** and 🗑 **Delete** (optionally erasing files from disk).
-- 📡 Optional **+ public trackers** toggle to find peers faster on trackerless
-  magnets (leave off for private-tracker torrents).
-- 📥 **Direct download** links per file (`Content-Disposition: attachment`).
-- ▶ **Streaming** with HTTP Range — open a video link in the browser or VLC and
-  seek before it's done. librqbit prioritizes the pieces you're reading.
-- 📊 Live progress, speed, per-file readiness, polled into a clean web UI.
-- 🦀 Single binary, embedded web UI. Binds to `127.0.0.1` by default.
+---
 
-## Run
+## Quick start
 
 ```bash
 git clone https://github.com/KenjakuSoft/MAGNET-BOX.git
@@ -77,139 +71,131 @@ cargo run --release
 ```
 
 On first run it prints a generated **admin** username/password (or set your own
-via env). Log in at `/login`; admins get an **Admin** link to manage users.
+via env — see below). Log in at `/login`; admins get an **Admin** link to manage
+users. You'll need the [Rust toolchain](https://rustup.rs).
 
-Config via env vars:
+📖 **Full documentation:** [`landing/docs.html`](landing/docs.html) (the project
+site, with a beginner deploy walkthrough). The marketing page lives in
+[`landing/index.html`](landing/index.html).
 
-| Var                       | Default        | Purpose                                            |
-|---------------------------|----------------|----------------------------------------------------|
-| `MAGNETBOX_PORT`          | `8080`         | Listen port                                        |
-| `MAGNETBOX_BIND`          | `127.0.0.1`    | Bind address (keep localhost; proxy in front)      |
-| `MAGNETBOX_DIR`           | `./downloads`  | Where files are stored                             |
-| `MAGNETBOX_DATA`          | `./magnetbox-data` | Where `users.json` lives                       |
-| `MAGNETBOX_HTTPS`         | `0`            | `1` = mark session cookies `Secure` (set behind HTTPS) |
-| `MAGNETBOX_ADMIN_USER`    | `admin`        | First-run admin username                           |
-| `MAGNETBOX_ADMIN_PASSWORD`| *(generated)*  | First-run admin password (≥8 chars; else random)   |
-| `RUST_LOG`                | `info`         | Log verbosity                                      |
+---
 
-## HTTP API
+## 🔧 Configuration
 
-| Method | Path                       | Body / notes                          |
-|--------|----------------------------|---------------------------------------|
-| GET    | `/`                          | Web UI                                            |
-| GET    | `/api/torrents`              | JSON: torrents + files (incl. `selected`/`paused`) + `adding`/`errors` |
+Everything is configured with environment variables — no config file to edit.
+
+| Var | Default | Purpose |
+|---|---|---|
+| `MAGNETBOX_PORT` | `8080` | Listen port |
+| `MAGNETBOX_BIND` | `127.0.0.1` | Bind address (keep localhost; put a proxy in front) |
+| `MAGNETBOX_DIR` | `./downloads` | Where downloaded files are stored |
+| `MAGNETBOX_DATA` | `./magnetbox-data` | Where accounts/settings live |
+| `MAGNETBOX_HTTPS` | `0` | `1` marks session cookies `Secure` (set when behind HTTPS) |
+| `MAGNETBOX_ADMIN_USER` | `admin` | First-run admin username |
+| `MAGNETBOX_ADMIN_PASSWORD` | *(generated)* | First-run admin password (≥8 chars). Set it to reset a lost password. |
+| `RUST_LOG` | `info` | Log verbosity |
+
+---
+
+## 🔌 HTTP API
+
+All routes except `/login` and `/api/login` require a valid session **cookie** —
+or an `Authorization: Bearer <token>` header (from the Account page) for
+automation. Admin-only paths (`/admin`, `/api/users*`, `/api/settings`) require
+the `admin` role. The full machine-readable spec is at `/api/openapi.json`.
+
+<details>
+<summary><b>Full endpoint reference</b> (click to expand)</summary>
+
+<br>
+
+| Method | Path | Body / notes |
+|--------|------|--------------|
+| GET    | `/`                          | Web UI |
+| GET    | `/api/torrents`              | torrents + files (incl. `selected`/`paused`) + `adding`/`errors` |
 | POST   | `/api/add`                   | `{ "source": "magnet / .torrent URL / http(s) link", "paused", "trackers" }` (auto-detected) |
 | POST   | `/api/upload`                | raw `.torrent` body; `?paused=true&trackers=true` |
-| GET    | `/api/links`                 | list direct-link downloads + progress             |
+| GET    | `/api/links`                 | list direct-link downloads + progress |
 | POST   | `/api/links/{id}/delete`     | remove a direct download; `?files=true` erases it |
-| GET    | `/dl/{id}`                   | serve a finished direct download (Range)          |
+| GET    | `/dl/{id}`                   | serve a finished direct download (Range) |
 | GET    | `/subtitle/{id}/{file}`      | a torrent's `.srt` converted to WebVTT for the player |
-| GET    | `/api/account`               | account info + API token + session count          |
-| POST   | `/api/account/token`         | generate/regenerate the API token                 |
-| POST   | `/api/account/logout-others` | end all of your other sessions                    |
-| POST   | `/api/torrents/{id}/files`   | `{ "files": [indices] }` — set files to download  |
-| POST   | `/api/torrents/{id}/pause`   | pause                                             |
-| POST   | `/api/torrents/{id}/resume`  | resume                                            |
-| POST   | `/api/torrents/{id}/delete`  | remove torrent; `?files=true` also erases data    |
-| GET    | `/download/{id}/{file}`      | file as attachment (Range supported)              |
-| GET    | `/stream/{id}/{file}`        | file inline for players (Range)                   |
+| GET    | `/api/account`               | account info + API token + session count |
+| POST   | `/api/account/token`         | generate/regenerate the API token |
+| POST   | `/api/account/logout-others` | end all of your other sessions |
+| POST   | `/api/torrents/{id}/files`   | `{ "files": [indices] }` — set files to download |
+| POST   | `/api/torrents/{id}/pause` · `/resume` · `/delete` | pause / resume / remove (`?files=true` erases data) |
+| GET    | `/download/{id}/{file}`      | file as attachment (Range supported) |
+| GET    | `/stream/{id}/{file}`        | file inline for players (Range) |
 | GET    | `/login` · POST `/api/login` | login page / `{username,password}` → session **or** `{twofa,challenge}` |
 | POST   | `/api/login/2fa`             | `{challenge, code}` → session cookie (TOTP or recovery code) |
 | POST   | `/api/account/2fa/start` · `/confirm` · `/disable` | enroll (QR+secret) / confirm (→ recovery codes) / disable |
-| POST   | `/api/logout`                | end session                                       |
-| GET    | `/api/me` · POST `/api/me/password` | current user / change own password         |
-| GET/POST | `/api/users` *(admin)*     | list / create users                               |
-| POST   | `/api/users/{name}/password` · `/delete` *(admin)* | reset password / delete user      |
+| POST   | `/api/logout`                | end session |
+| GET    | `/api/me` · POST `/api/me/password` | current user / change own password |
+| GET/POST | `/api/users` *(admin)*     | list / create users |
+| POST   | `/api/users/{name}/password` · `/delete` *(admin)* | reset password / delete user |
 | GET    | `/register` · POST `/api/register` · GET `/api/register/status` | invite-only sign-up (public) |
 | GET/POST | `/api/admin/invites` *(admin)* · POST `…/{code}/delete` | list / create / delete invite codes |
 | GET/POST | `/api/admin/config` *(admin)* | get/set registration-open + maintenance |
 | POST   | `/api/users/{name}/disabled` · `/token` *(admin)* | ban/unban · rotate a user's API token |
-| GET    | `/admin` *(admin)*           | the admin console (overview/torrents/downloads/users/invites/sessions/activity/access/settings) |
-| GET    | `/api/admin/overview` *(admin)* | live system + engine + storage stats           |
-| GET    | `/api/admin/activity` *(admin)* | audit log of state-changing actions            |
+| GET    | `/admin` *(admin)*           | the admin console |
+| GET    | `/api/admin/overview` *(admin)* | live system + engine + storage stats |
+| GET    | `/api/admin/activity` *(admin)* | audit log of state-changing actions |
 | GET    | `/api/admin/sessions` *(admin)* | active sessions; `POST …/{sid}/revoke`, `…/revoke-others` |
-| POST   | `/api/admin/torrents/pause-all` · `resume-all` *(admin)* | bulk torrent control      |
+| POST   | `/api/admin/torrents/pause-all` · `resume-all` *(admin)* | bulk torrent control |
 | POST   | `/api/admin/downloads/clear-completed` *(admin)* | delete all finished direct downloads |
 | GET    | `/settings`                  | settings page (account + preferences; admin extras) |
 | GET/POST | `/api/settings` *(admin)*  | get / set global speed limits (bytes/sec; `0`/null = unlimited) |
 
-All routes except `/login` and `/api/login` require a valid session **cookie**
-— or an `Authorization: Bearer <token>` header (from the Account page) for
-API/automation. Admin-only paths (`/admin`, `/api/users*`, `/api/settings`)
-require the `admin` role.
+</details>
 
-## How streaming works
+#### How streaming works
 
 `/stream/{id}/{file}` calls librqbit's `ManagedTorrent::stream(file)`, which
 returns a seekable, piece-aware reader. The handler maps the HTTP `Range` header
 onto a `seek` + length-limited read, so a player requesting `bytes=…` gets a
 `206 Partial Content` and the engine fetches exactly those pieces on demand.
 
-## Security posture
+---
+
+## 🔒 Security posture
 
 Audited and hardened for an internet-facing private instance:
 
 - **SSRF protection** — the direct-link downloader resolves each URL (and every
   redirect hop) and refuses private/loopback/link-local/CGNAT/cloud-metadata
-  addresses, so it can't be used to reach `localhost`, internal hosts, or
-  `169.254.169.254`.
-- **Security headers** on every response: `X-Content-Type-Options: nosniff`,
-  `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `Permissions-Policy`.
-- **XSS-safe rendering** — all user-controlled values are escaped; usernames are
-  charset-restricted; no user data is interpolated into inline handlers.
-- **Two-factor auth (TOTP)** — optional per-account, set up via QR in the Account
-  page (any authenticator app), enforced as a second step at login, with one-time
-  **recovery codes**. Secrets are stored server-side only.
+  addresses, so it can't reach `localhost`, internal hosts, or `169.254.169.254`.
+- **Two-factor auth (TOTP)** — optional per-account via QR, enforced as a second
+  login step, with one-time **recovery codes**; secrets stored server-side only.
 - **Login hardening** — argon2 verify, constant-ish timing (dummy verify for
-  unknown usernames to prevent enumeration), and per-username attempt throttling;
-  2FA login challenges expire in 5 min and cap attempts.
+  unknown usernames to prevent enumeration), per-username throttling (5 fails →
+  ~15 min lock); 2FA challenges expire in 5 min and cap attempts.
 - **CSRF** — `SameSite=Strict` session cookie + cross-origin `Origin` check on
   mutating requests; API clients use bearer tokens (not CSRF-able).
+- **Security headers** on every response — `X-Content-Type-Options: nosniff`,
+  `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `Permissions-Policy`.
+- **XSS-safe rendering** — all user-controlled values escaped; usernames
+  charset-restricted; no user data in inline handlers.
 - **Per-user limits** — admin-set cap on concurrent direct downloads (429 over cap).
-- **Secrets at rest** — `users.json` / `invites.json` / `usage.json` are written
-  `0600` (owner-only) automatically on Unix.
-- No SQL (so no SQLi), no `unsafe`, file access is by index or sanitized name.
+- **Secrets at rest** — `users.json` / `invites.json` / `usage.json` written
+  `0600` (owner-only) on Unix.
+- **No SQL** (no SQLi), **no `unsafe`**, file access by index or sanitized name.
 
 > Operational hardening: run as a dedicated non-root user, keep the app bound to
 > `127.0.0.1` behind Caddy (so `X-Forwarded-For` is trustworthy), and run
 > `cargo audit` on the server periodically for dependency CVEs.
 
-## 🚀 Go-live checklist
+---
 
-1. **DNS** → point `magnetbox.example.com` at the VPS.
-2. **Build on the VPS:** `cargo build --release` → install the binary to
-   `/opt/magnetbox/magnetbox`; create dirs `downloads/` + `data/` owned by a
-   dedicated `magnetbox` user.
-3. **systemd:** install [`deploy/magnetbox.service`](deploy/magnetbox.service)
-   (already sets `MAGNETBOX_HTTPS=1`, binds localhost, `ProtectSystem=strict`,
-   `HOME=/opt/magnetbox`); `systemctl enable --now magnetbox`.
-4. **First login:** grab the generated admin password from
-   `journalctl -u magnetbox`, sign in, **change it**, and **enable 2FA** on the
-   Account page.
-5. **HTTPS:** install Caddy with [`deploy/Caddyfile`](deploy/Caddyfile) (your
-   domain) → automatic Let's Encrypt cert + reverse proxy to `127.0.0.1:8080`.
-6. **Firewall:** `ufw allow OpenSSH && ufw allow 80 && ufw allow 443 && ufw enable`
-   — never expose the app port directly. (Optionally open your BitTorrent port for
-   better peer connectivity.)
-7. **Access policy:** keep **registration closed**; open it briefly only when
-   handing out invite codes, then close it again.
-8. **Audit:** run `cargo audit` for dependency CVEs before and periodically after.
+## 🚀 Deploy to a VPS
 
-## Authentication
+> [!WARNING]
+> Your VPS provider receives DMCA notices for traffic from your box. Keep it to
+> content you have the right to download, or they'll suspend the server.
 
-- **argon2**-hashed passwords stored in `users.json`.
-- Server-side sessions; **HttpOnly + SameSite=Strict** cookie (`Secure` when
-  `MAGNETBOX_HTTPS=1`).
-- **CSRF**: cross-origin mutating requests are rejected (Origin check) on top of
-  SameSite=Strict.
-- **Login throttling**: 5 failed attempts locks that username for ~15 min.
-- **Roles**: `admin` (manage users + everything) and `user` (use the app; shared
-  torrent list). The last admin can't be deleted.
+<details open>
+<summary><b>Step-by-step (public domain + HTTPS + login)</b></summary>
 
-## Deploy to a VPS (public domain + login)
-
-> ⚠️ Your VPS provider gets the DMCA notices. Keep this to content you have the
-> right to download, or they'll suspend the box.
+<br>
 
 **1. DNS** — point an `A` record (e.g. `magnetbox.example.com`) at the VPS IP.
 
@@ -231,38 +217,53 @@ sudo mkdir -p /opt/magnetbox/{downloads,data} && sudo chown -R magnetbox:magnetb
 sudo systemctl daemon-reload && sudo systemctl enable --now magnetbox
 journalctl -u magnetbox -f          # grab the first-run admin password here
 ```
-The unit already sets `MAGNETBOX_HTTPS=1` and binds localhost. (Or set
-`MAGNETBOX_ADMIN_PASSWORD` in the unit to pick your own.)
+The unit already sets `MAGNETBOX_HTTPS=1`, binds localhost, and uses
+`ProtectSystem=strict`. (Or set `MAGNETBOX_ADMIN_PASSWORD` in the unit.)
 
 **4. Caddy (HTTPS + reverse proxy)** — install Caddy, drop in
-[`deploy/Caddyfile`](deploy/Caddyfile) with your domain, then `sudo systemctl reload caddy`.
-Caddy fetches and renews the TLS cert automatically.
+[`deploy/Caddyfile`](deploy/Caddyfile) with your domain, then
+`sudo systemctl reload caddy`. Caddy fetches and renews the TLS cert automatically.
 
 **5. Firewall** — only expose web ports; never the app port:
 ```bash
-sudo ufw allow OpenSSH && sudo ufw allow 80 && sudo ufw allow 443
-sudo ufw enable
+sudo ufw allow OpenSSH && sudo ufw allow 80 && sudo ufw allow 443 && sudo ufw enable
 ```
 (Optional: open your BitTorrent listen port for better peer connectivity.)
 
 **6. Log in** at `https://magnetbox.example.com/login`, change the admin
-password, and add your users from the **Admin** panel.
+password, enable 2FA, and add your users from the **Admin** panel.
 
-### Hardening checklist
+</details>
+
+**Hardening checklist**
 - [ ] Strong admin password; rotate the generated one immediately.
 - [ ] `MAGNETBOX_BIND=127.0.0.1` (default) — the app is never directly exposed.
 - [ ] HTTPS only via Caddy; `MAGNETBOX_HTTPS=1` so cookies are `Secure`.
 - [ ] Firewall closed except 80/443 (+SSH).
 - [ ] Keep it invite-only — only create accounts for people you trust.
-- [ ] Consider a second factor at the proxy (Cloudflare Access / Authelia) if it
-      faces the open internet.
+- [ ] Consider a second factor at the proxy (Cloudflare Access / Authelia) if it faces the open internet.
+- [ ] Run `cargo audit` before launch and periodically after.
 
-## Stack
+---
 
-Rust 2021 · librqbit 8.1 (BitTorrent engine) · axum 0.7 (HTTP) · tokio ·
-tokio-util `ReaderStream` (range streaming) · embedded vanilla-JS UI.
+## 🧱 Stack
 
-## License
+**Rust 2021** · **librqbit 8.1** (BitTorrent engine) · **axum 0.7** (HTTP) ·
+**tokio** · tokio-util `ReaderStream` (range streaming) · embedded vanilla-JS UI.
+
+---
+
+## 💚 Support
+
+MagnetBox is free and open. Donations fund maintenance, security fixes, and new
+features — thank you. 🙏
+
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-Support_development-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/lidaf)
+[![PayPal](https://img.shields.io/badge/PayPal-Donate-00457C?style=for-the-badge&logo=paypal&logoColor=white)](https://www.paypal.com/donate/?business=JG7J2JMQ8DP38)
+
+---
+
+## 📜 License
 
 Licensed under the **GNU Affero General Public License v3.0** — see
 [`LICENSE`](LICENSE). In short: it's free and open, and if you run a **modified**
