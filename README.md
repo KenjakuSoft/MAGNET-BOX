@@ -256,6 +256,30 @@ features — thank you. 🙏
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-Support_development-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/lidaf)
 [![PayPal](https://img.shields.io/badge/PayPal-Donate-00457C?style=for-the-badge&logo=paypal&logoColor=white)](https://www.paypal.com/donate/?business=JG7J2JMQ8DP38)
 
+### Crypto
+
+> Hover a code block and click the **copy** icon on GitHub.
+
+**![BTC](https://img.shields.io/badge/BTC-F7931A?style=flat-square&logo=bitcoin&logoColor=white) Bitcoin**
+```
+13sZHQvfYx3o9Ctb4oGX9zeeDDWi8qNJF6
+```
+
+**![ETH](https://img.shields.io/badge/ETH-627EEA?style=flat-square&logo=ethereum&logoColor=white) Ethereum · ![USDT](https://img.shields.io/badge/USDT-26A17B?style=flat-square&logo=tether&logoColor=white) USDT — ERC-20**
+```
+0x25ab7f10d0d2586838017c24126c420ebc2368dc
+```
+
+**![LTC](https://img.shields.io/badge/LTC-345D9D?style=flat-square&logo=litecoin&logoColor=white) Litecoin**
+```
+LSCNAVmn7ozcwBwKqig5LEPAWgiuubRmmB
+```
+
+**![DOGE](https://img.shields.io/badge/DOGE-C2A633?style=flat-square&logo=dogecoin&logoColor=white) Dogecoin**
+```
+DRzwctKM3JCfmHCRmLUbyYbUbUVGeESmKp
+```
+
 ---
 
 ## 📜 License
