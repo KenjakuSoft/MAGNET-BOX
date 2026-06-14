@@ -33,8 +33,7 @@ One Rust binary. Your server, your data.
 > **What this is.** A self-hosted **seedbox with a direct-download & streaming
 > front end**. There's no global cache — your box fetches from the live
 > BitTorrent swarm at seeder speed, and your server's IP participates in the
-> swarm. Use it only for content you have the right to download — your own files,
-> Linux ISOs, Creative-Commons / public-domain media, and the like.
+> swarm. You run your own private instance on your own hardware.
 
 Built on [**librqbit**](https://github.com/ikatson/rqbit), a mature Rust
 BitTorrent engine, so there's no external torrent client to install.
@@ -188,12 +187,8 @@ Audited and hardened for an internet-facing private instance:
 
 ## 🚀 Deploy to a VPS
 
-> [!WARNING]
-> Your VPS provider receives DMCA notices for traffic from your box. Keep it to
-> content you have the right to download, or they'll suspend the server.
-
 <details open>
-<summary><b>Step-by-step (public domain + HTTPS + login)</b></summary>
+<summary><b>Step-by-step (your own domain + HTTPS + login)</b></summary>
 
 <br>
 
