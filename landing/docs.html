@@ -157,13 +157,14 @@
 
       <section id="quick-start">
         <h2>Quick start</h2>
-        <p>If you just want to try it on your own computer:</p>
-        <pre><code><span class="cmd"># 1. install Rust (rustup.rs), then clone &amp; run:</span>
-git clone https://github.com/KenjakuSoft/MAGNET-BOX.git
-cd MAGNET-BOX
-cargo run</code></pre>
-        <p>It prints a URL (default <code>http://127.0.0.1:8080</code>) and, on first run, a generated <b>admin password</b>. Open the URL, sign in as <code>admin</code> with that password, and you're in.</p>
-        <div class="callout warn">⚠️ Run it in a terminal so you can see the first-run password. Lost it? See <a href="#faq">FAQ</a>.</div>
+        <p>No technical knowledge needed — just download and run.</p>
+        <ol>
+          <li>Open the <a href="https://github.com/KenjakuSoft/MAGNET-BOX/releases/latest" target="_blank" rel="noopener">Releases</a> page and download the file for your system — <code>magnetbox-windows-x64.exe</code> (Windows), <code>magnetbox-macos-arm64</code> (Mac), or <code>magnetbox-linux-x64</code> (Linux).</li>
+          <li><b>Open it.</b> A small window appears and <b>your browser opens MagnetBox automatically</b>.</li>
+          <li>Sign in as <code>admin</code> with the password shown in the window (also saved to <code>FIRST-LOGIN.txt</code> next to the program). Change it under <b>Admin</b>.</li>
+        </ol>
+        <div class="callout">💡 Keep the window open while you use it — closing it stops MagnetBox. Want it always-on? See <a href="#deploy">Deploy to a server</a>.</div>
+        <div class="callout warn">Windows may warn about a new app → <b>More info → Run anyway</b>. macOS: right-click the file → <b>Open</b> the first time. macOS/Linux downloads need <code>chmod +x</code> first (it's a program, not an installer).</div>
       </section>
 
       <section id="build">
@@ -182,21 +183,19 @@ cargo build --release</code></pre>
 
       <section id="deploy">
         <h2>Deploy to a server</h2>
-        <p>For a real, always-on instance you'll want a small Linux server (VPS) and a domain. Beginner-friendly path:</p>
+        <p>For a real, always-on instance you'll want a small Linux server (VPS). Get one from Hetzner, DigitalOcean or Vultr running <b>Ubuntu</b> — 2 vCPU / 4 GB RAM is plenty; pick a host with generous bandwidth and enough disk for your downloads.</p>
+        <h3>One-line install</h3>
+        <p>Connect to your server (<code>ssh root@your-server-ip</code>) and paste:</p>
+        <pre><code>curl -fsSL https://raw.githubusercontent.com/KenjakuSoft/MAGNET-BOX/main/install.sh | sudo bash</code></pre>
+        <p>This downloads MagnetBox, installs it as a service that <b>starts on boot</b>, and prints your admin login. It runs on <code>127.0.0.1:8080</code> by default.</p>
+        <h3>Put it online with HTTPS</h3>
         <ol>
-          <li><b>Get a domain</b> (Cloudflare, Porkbun, Namecheap) and a <b>VPS</b> running Ubuntu 24.04 (Hetzner, DigitalOcean, Vultr). 2 vCPU / 4 GB RAM is plenty; pick a host with generous bandwidth and enough disk for your downloads.</li>
-          <li><b>Point the domain</b> at the VPS with an <code>A</code> record → the server's IP.</li>
-          <li><b>Build it on the server:</b>
-<pre><code>apt update &amp;&amp; apt install -y build-essential pkg-config curl
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-source "$HOME/.cargo/env"
-cargo build --release</code></pre></li>
-          <li><b>Run it as a service</b> with the included <code>deploy/magnetbox.service</code> (systemd) — it binds localhost, enables secure cookies, and locks down the filesystem. Then <code>systemctl enable --now magnetbox</code>. Grab the first-run admin password with <code>journalctl -u magnetbox</code>.</li>
-          <li><b>Add HTTPS</b> with <a href="https://caddyserver.com" target="_blank" rel="noopener">Caddy</a> using the included <code>deploy/Caddyfile</code> — it gets a free certificate automatically and proxies to the app.</li>
+          <li><b>Get a domain</b> (Cloudflare, Porkbun, Namecheap) and point an <code>A</code> record at your server's IP.</li>
+          <li><b>Add HTTPS</b> with <a href="https://caddyserver.com" target="_blank" rel="noopener">Caddy</a> using the included <code>deploy/Caddyfile</code> — it fetches a free certificate automatically and proxies to the app.</li>
           <li><b>Firewall:</b> <code>ufw allow OpenSSH &amp;&amp; ufw allow 80 &amp;&amp; ufw allow 443 &amp;&amp; ufw enable</code>.</li>
           <li><b>Open your domain</b>, sign in, change the admin password, and turn on 2FA.</li>
         </ol>
-        <div class="callout">Keep the app bound to <code>127.0.0.1</code> behind Caddy — never expose the app port directly. The <code>deploy/</code> folder has ready-to-use <code>Caddyfile</code> and systemd unit.</div>
+        <div class="callout">Keep the app bound to <code>127.0.0.1</code> behind Caddy — never expose the app port directly. The <code>deploy/</code> folder has a ready-to-use <code>Caddyfile</code> and systemd unit.</div>
       </section>
 
       <section id="config">

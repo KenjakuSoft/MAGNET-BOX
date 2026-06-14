@@ -269,15 +269,35 @@ impl Auth {
         if self.users.lock().unwrap().is_empty() {
             let password = random_password();
             self.add_user(&username, &password, Role::Admin)?;
-            println!("\n  ╭─ First run: created admin account ───────────");
+
+            // Also save the credentials to a file so a non-technical user who
+            // closes the window can still find them.
+            let saved_to = self.write_first_login(&username, &password);
+
+            println!("\n  ╭─ First run: created your admin account ──────");
             println!("  │  username: {username}");
             println!("  │  password: {password}");
-            println!("  │  ↑ COPY THIS NOW — it is shown only once.");
-            println!("  │    Log in at /login, then change it in Admin.");
-            println!("  │    Lost it? set MAGNETBOX_ADMIN_PASSWORD and restart.");
+            println!("  │  ↑ Use these to log in (then change the password).");
+            if let Some(p) = &saved_to {
+                println!("  │  Also saved to: {}", p.display());
+            }
+            println!("  │  Lost it? set MAGNETBOX_ADMIN_PASSWORD and restart.");
             println!("  ╰──────────────────────────────────────────────\n");
         }
         Ok(())
+    }
+
+    /// Write the first-run admin credentials next to the users file (0600 on
+    /// Unix) so they aren't lost if the console window is closed. Best-effort.
+    fn write_first_login(&self, username: &str, password: &str) -> Option<PathBuf> {
+        let dir = self.path.parent()?;
+        let file = dir.join("FIRST-LOGIN.txt");
+        let body = format!(
+            "MagnetBox — your admin login\n\n  username: {username}\n  password: {password}\n\n\
+             Open MagnetBox in your browser, go to /login, and sign in with these.\n\
+             Then change the password in Admin. You can delete this file afterwards.\n"
+        );
+        write_private(&file, body.as_bytes()).ok().map(|_| file)
     }
 
     fn ensure_role(&self, username: &str, role: Role) -> Result<()> {

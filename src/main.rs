@@ -90,19 +90,59 @@ async fn main() -> anyhow::Result<()> {
         .await
         .with_context(|| format!("could not bind {addr} (is the port in use?)"))?;
 
+    let url = format!("http://{addr}");
     println!();
     println!("  ┌─ MagnetBox ───────────────────────────────");
-    println!("  │  listening http://{addr}");
-    println!("  │  login page /login   (secure cookies: {secure_cookie})");
+    println!("  │  Open this in your browser:");
+    println!("  │     {url}/login");
     println!("  │  downloads  {}", download_dir.display());
-    println!("  │  users db   {}", users_path.display());
+    println!("  │  secure cookies: {secure_cookie}");
     println!("  └────────────────────────────────────────────");
+    println!("  (keep this window open — closing it stops MagnetBox)");
     println!();
+
+    maybe_open_browser(ip, &format!("{url}/login"));
 
     axum::serve(listener, http::router(app, auth, direct, host_metrics))
         .await
         .context("http server error")?;
     Ok(())
+}
+
+/// Open the default browser at `url` when launched interactively on localhost
+/// (e.g. double-clicking the binary), so a non-technical user lands straight on
+/// the app. Skipped for headless/server runs and when `MAGNETBOX_NO_OPEN` is set.
+fn maybe_open_browser(ip: IpAddr, url: &str) {
+    use std::io::IsTerminal;
+    if env_flag("MAGNETBOX_NO_OPEN") || !ip.is_loopback() || !std::io::stdout().is_terminal() {
+        return;
+    }
+    if open_url(url).is_ok() {
+        println!("  Opening your browser…");
+    }
+}
+
+fn open_url(url: &str) -> std::io::Result<()> {
+    use std::process::Command;
+    #[cfg(target_os = "windows")]
+    let mut cmd = {
+        let mut c = Command::new("cmd");
+        c.args(["/C", "start", "", url]);
+        c
+    };
+    #[cfg(target_os = "macos")]
+    let mut cmd = {
+        let mut c = Command::new("open");
+        c.arg(url);
+        c
+    };
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let mut cmd = {
+        let mut c = Command::new("xdg-open");
+        c.arg(url);
+        c
+    };
+    cmd.spawn().map(|_| ())
 }
 
 fn data_dir() -> PathBuf {

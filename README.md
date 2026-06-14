@@ -14,12 +14,12 @@ One Rust binary. Your server, your data.
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-41d6a3.svg?style=flat-square)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-2021-CE412B?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org)
 [![Engine: librqbit](https://img.shields.io/badge/engine-librqbit-38bdf8?style=flat-square)](https://github.com/ikatson/rqbit)
-[![Single binary](https://img.shields.io/badge/deploy-single_binary-8b5cf6?style=flat-square)](#quick-start)
+[![Single binary](https://img.shields.io/badge/deploy-single_binary-8b5cf6?style=flat-square)](#install)
 <br>
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-Support_development-FF5E5B?style=flat-square&logo=ko-fi&logoColor=white)](https://ko-fi.com/lidaf)
 [![PayPal](https://img.shields.io/badge/PayPal-Donate-00457C?style=flat-square&logo=paypal&logoColor=white)](https://www.paypal.com/donate/?business=JG7J2JMQ8DP38)
 
-**[Features](#-features) · [Quick start](#quick-start) · [Configuration](#-configuration) · [HTTP API](#-http-api) · [Security](#-security-posture) · [Deploy](#-deploy-to-a-vps) · [Donate](#-support)**
+**[Features](#-features) · [Install](#install) · [Configuration](#-configuration) · [HTTP API](#-http-api) · [Security](#-security-posture) · [Deploy](#-deploy-to-a-vps) · [Donate](#-support)**
 
 </div>
 
@@ -60,22 +60,49 @@ BitTorrent engine, so there's no external torrent client to install.
 
 ---
 
-## Quick start
+## Install
+
+No technical knowledge required — pick the path that fits you.
+
+### 🖥️ Easiest — run it on your own computer
+
+1. Open the **[Releases](https://github.com/KenjakuSoft/MAGNET-BOX/releases/latest)** page.
+2. Download the file for your system:
+   - **Windows** → `magnetbox-windows-x64.exe`
+   - **macOS (Apple Silicon)** → `magnetbox-macos-arm64`
+   - **Linux** → `magnetbox-linux-x64`
+3. **Open it.** A small window appears and **your browser opens MagnetBox automatically**.
+4. Log in as **`admin`** with the password shown in that window (it's also saved to a
+   **`FIRST-LOGIN.txt`** file next to the program). Change it under **Admin** when you're in.
+
+That's the whole thing — no commands, no Rust, no build.
+
+> **Windows** may show a "Windows protected your PC" notice for a new app → click **More info → Run anyway**.
+> **macOS/Linux**: it's a plain program, not an installer — open a terminal in your downloads folder and run
+> `chmod +x magnetbox-*` then `./magnetbox-*`. (macOS: first time, right-click the file → **Open**.)
+> Keep the window open while you use it — closing it stops MagnetBox.
+
+### 🌐 Always-on — run it on a server (one command)
+
+On a fresh **Ubuntu/Debian** server, paste this one line:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/KenjakuSoft/MAGNET-BOX/main/install.sh | sudo bash
+```
+
+It downloads MagnetBox, installs it as a service that **starts on boot**, and prints your
+admin login. To use it from anywhere with HTTPS, point a domain at the server and add Caddy —
+see [Deploy to a VPS](#-deploy-to-a-vps).
+
+### 🛠️ Build from source (advanced)
 
 ```bash
 git clone https://github.com/KenjakuSoft/MAGNET-BOX.git
 cd MAGNET-BOX
-cargo run --release
-# then open the printed URL, e.g. http://127.0.0.1:8080
+cargo run --release      # needs the Rust toolchain — https://rustup.rs
 ```
 
-On first run it prints a generated **admin** username/password (or set your own
-via env — see below). Log in at `/login`; admins get an **Admin** link to manage
-users. You'll need the [Rust toolchain](https://rustup.rs).
-
-📖 **Full documentation:** [`landing/docs.html`](landing/docs.html) (the project
-site, with a beginner deploy walkthrough). The marketing page lives in
-[`landing/index.html`](landing/index.html).
+📖 **Full documentation:** [`landing/docs.html`](landing/docs.html).
 
 ---
 
@@ -187,8 +214,18 @@ Audited and hardened for an internet-facing private instance:
 
 ## 🚀 Deploy to a VPS
 
-<details open>
-<summary><b>Step-by-step (your own domain + HTTPS + login)</b></summary>
+**Fastest:** on a fresh Ubuntu/Debian server, the one-line installer downloads the
+prebuilt binary and sets up the systemd service for you:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/KenjakuSoft/MAGNET-BOX/main/install.sh | sudo bash
+```
+
+Then just add a domain + HTTPS (steps 1, 4–6 below). The manual route is here if you
+prefer to build from source:
+
+<details>
+<summary><b>Manual step-by-step (build from source + HTTPS + login)</b></summary>
 
 <br>
 
