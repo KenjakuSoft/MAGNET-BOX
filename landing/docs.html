@@ -233,7 +233,7 @@ cargo build --release</code></pre></li>
         <ul>
           <li><b>▶ Play</b> — opens the in-app player; video/audio streams and seeks even before the download finishes, with subtitle tracks from sibling <code>.srt</code> files.</li>
           <li><b>⤓ Download</b> — pull the file over HTTP (supports resuming / range requests).</li>
-          <li><b>⧉ Link</b> — copy a direct link to open in VLC, Infuse, etc.</li>
+          <li><b>⧉ Copy link</b> — copies a direct link with your access key embedded, ready to paste into a download manager (JDownloader, IDM) or player (VLC, Infuse) — see <a href="#api">External downloaders</a>.</li>
           <li><b>Checkboxes</b> — choose exactly which files download; toggle anytime.</li>
         </ul>
       </section>
@@ -273,6 +273,10 @@ cargo build --release</code></pre></li>
         <p>Every endpoint can be driven programmatically. On the <b>Account</b> page, generate an <b>API token</b>, then call the API with:</p>
         <pre><code>curl -H "Authorization: Bearer YOUR_TOKEN" https://your-host/api/torrents</code></pre>
         <p>The full machine-readable spec is at <code>/api/openapi.json</code> (OpenAPI 3.1) and a live reference page is at <code>/docs</code> on your running instance — import it into Postman/Insomnia or point Kodi/Stremio-style tools at it.</p>
+        <h3>External downloaders (JDownloader, IDM, VLC)</h3>
+        <p>Download &amp; stream links also accept the token as <b>HTTP Basic auth</b>, so a plain URL works in any external app — no header configuration needed:</p>
+        <pre><code>https://your-username:YOUR_TOKEN@your-host/download/3/0</code></pre>
+        <p>Easiest path: click a file's <b>⧉ Copy link</b> button in the app — it copies a link with your key already embedded. Treat that link like a password; rotating your token on the Account page revokes any links you've shared.</p>
       </section>
 
       <section id="security">

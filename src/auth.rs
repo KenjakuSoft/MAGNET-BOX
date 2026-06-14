@@ -995,6 +995,49 @@ fn bearer(headers: &HeaderMap) -> Option<String> {
         .map(|s| s.trim().to_string())
 }
 
+/// Read the password from an `Authorization: Basic <base64(user:pass)>` header.
+///
+/// This lets any download manager / media player (JDownloader, IDM, VLC, curl)
+/// authenticate with a plain URL of the form `https://user:API_TOKEN@host/...`.
+/// The username is ignored; the password must be a valid API token.
+fn basic_password(headers: &HeaderMap) -> Option<String> {
+    let b64 = headers
+        .get(header::AUTHORIZATION)?
+        .to_str()
+        .ok()?
+        .strip_prefix("Basic ")?
+        .trim();
+    let text = String::from_utf8(b64_decode(b64)?).ok()?;
+    // "user:token" — the token is everything after the first ':'.
+    text.split_once(':').map(|(_, token)| token.to_string())
+}
+
+/// Minimal standard-alphabet base64 decoder (avoids pulling in a dependency).
+/// Tolerates missing padding; returns `None` on any non-alphabet byte.
+fn b64_decode(s: &str) -> Option<Vec<u8>> {
+    fn val(c: u8) -> Option<u32> {
+        Some(match c {
+            b'A'..=b'Z' => (c - b'A') as u32,
+            b'a'..=b'z' => (c - b'a' + 26) as u32,
+            b'0'..=b'9' => (c - b'0' + 52) as u32,
+            b'+' => 62,
+            b'/' => 63,
+            _ => return None,
+        })
+    }
+    let mut out = Vec::with_capacity(s.len() * 3 / 4);
+    let (mut buf, mut bits) = (0u32, 0u32);
+    for &b in s.as_bytes().iter().filter(|&&b| b != b'=') {
+        buf = (buf << 6) | val(b)?;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((buf >> bits) as u8);
+        }
+    }
+    Some(out)
+}
+
 /// Read the session token from the `Cookie` header.
 pub fn token_from_headers(headers: &HeaderMap) -> Option<String> {
     let raw = headers.get(header::COOKIE)?.to_str().ok()?;
@@ -1126,9 +1169,12 @@ fn to_unix(t: SystemTime) -> u64 {
 pub async fn require_auth(State(auth): State<Auth>, req: Request, next: Next) -> Response {
     let path = req.uri().path().to_string();
 
-    // API clients authenticate with `Authorization: Bearer <token>`; browsers
-    // use the session cookie.
-    let via_token = bearer(req.headers()).and_then(|t| auth.user_by_token(&t));
+    // API clients authenticate with `Authorization: Bearer <token>`; download
+    // managers / players use HTTP Basic (`user:API_TOKEN@host`); browsers use
+    // the session cookie.
+    let via_token = bearer(req.headers())
+        .or_else(|| basic_password(req.headers()))
+        .and_then(|t| auth.user_by_token(&t));
 
     // CSRF only matters for ambient cookie auth — token auth isn't forgeable
     // cross-site, so skip the Origin check for it.
@@ -1240,4 +1286,40 @@ fn cross_origin(headers: &HeaderMap) -> Option<String> {
         return Some("cross-origin request blocked".into());
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn b64_decodes_standard_and_unpadded() {
+        // "user:mb_secret" — the form a download manager sends for user:pass@host.
+        assert_eq!(b64_decode("dXNlcjptYl9zZWNyZXQ=").unwrap(), b"user:mb_secret");
+        // Same payload without the '=' padding still decodes.
+        assert_eq!(b64_decode("dXNlcjptYl9zZWNyZXQ").unwrap(), b"user:mb_secret");
+        assert_eq!(b64_decode("").unwrap(), b"");
+    }
+
+    #[test]
+    fn b64_rejects_invalid_chars() {
+        assert!(b64_decode("not valid base64!").is_none());
+    }
+
+    #[test]
+    fn basic_password_extracts_token_after_first_colon() {
+        let mut h = HeaderMap::new();
+        // base64("alice:mb_tok:with:colons") — password keeps the trailing colons.
+        h.insert(
+            header::AUTHORIZATION,
+            "Basic YWxpY2U6bWJfdG9rOndpdGg6Y29sb25z".parse().unwrap(),
+        );
+        assert_eq!(basic_password(&h).as_deref(), Some("mb_tok:with:colons"));
+    }
+
+    #[test]
+    fn basic_password_none_without_basic_header() {
+        let h = HeaderMap::new();
+        assert!(basic_password(&h).is_none());
+    }
 }

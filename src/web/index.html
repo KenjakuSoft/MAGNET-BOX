@@ -378,7 +378,7 @@ function fileRow(t, f) {
       <div class="acts">
         ${stream}
         <a class="btn small ghost plain" href="${dlUrl}">⤓ Download</a>
-        <button class="btn small ghost" onclick="copy('${stUrl}')">⧉ Link</button>
+        <button class="btn small ghost" onclick="copyExt('/download/${t.id}/${f.index}')" title="Copy a link with your key — paste into JDownloader, IDM, VLC, etc.">⧉ Copy link</button>
       </div>
     </div>`;
 }
@@ -455,6 +455,31 @@ function setAdding(n) {
 
 function toggle(id) { open.has(id) ? open.delete(id) : open.add(id); refresh(); }
 function copy(url) { navigator.clipboard.writeText(url).then(()=>toast('Stream link copied'), ()=>toast(url)); }
+
+// Account identity + API token, used to build credentialed links for external
+// download managers (JDownloader / IDM / VLC) via HTTP Basic auth.
+let ACCOUNT = { username: '', token: '' };
+async function loadAccount() {
+  try {
+    const r = await fetch('/api/account');
+    if (r.ok) { const a = await r.json(); ACCOUNT.username = a.username || ''; ACCOUNT.token = a.api_token || ''; }
+  } catch (e) { /* non-fatal */ }
+}
+// Build https://user:API_TOKEN@host/<path> so any downloader authenticates from the URL alone.
+function keyedUrl(path) {
+  const u = new URL(path, location.origin);
+  u.username = ACCOUNT.username;
+  u.password = ACCOUNT.token;
+  return u.toString();
+}
+function copyExt(path) {
+  if (!ACCOUNT.token) { toast('Generate an API token on the Account page first', true); return; }
+  const url = keyedUrl(path);
+  navigator.clipboard.writeText(url).then(
+    () => toast('Link copied — works in JDownloader / IDM / VLC'),
+    () => toast(url)
+  );
+}
 
 function toggleFile(id, idx, checked) {
   const t = TORRENTS[id]; if (!t) return;
@@ -570,7 +595,7 @@ function dcard(d) {
   const done = d.status === 'done';
   const playBtn = (done && MEDIA.test(d.filename)) ? `<button class="btn small ghost" onclick="playDl(${d.id})">▶ Play</button>` : '';
   const dlBtn = done ? `<a class="btn small ghost plain" href="${dlUrl}">⤓ Download</a>` : '';
-  const copyBtn = done ? `<button class="btn small ghost" onclick="copy('${location.origin}${dlUrl}')">⧉ Link</button>` : '';
+  const copyBtn = done ? `<button class="btn small ghost" onclick="copyExt('/dl/${d.id}')" title="Copy a link with your key — paste into JDownloader, IDM, VLC, etc.">⧉ Copy link</button>` : '';
   return `
     <div class="card">
       <div class="top" style="cursor:default">
@@ -706,6 +731,7 @@ window.addEventListener('drop', async e => {
 
 applyPrefs();
 loadMe();
+loadAccount();
 refresh();
 setInterval(refresh, 1200);
 </script>

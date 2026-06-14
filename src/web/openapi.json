@@ -3,7 +3,7 @@
   "info": {
     "title": "MagnetBox API",
     "version": "0.1.0",
-    "description": "Self-hosted magnet/torrent and direct-link downloader. All endpoints except /api/login, /api/login/2fa and /api/register* require authentication: either the session cookie (browser) or an `Authorization: Bearer <token>` header (from the Account page) for scripts and apps."
+    "description": "Self-hosted magnet/torrent and direct-link downloader. All endpoints except /api/login, /api/login/2fa and /api/register* require authentication: either the session cookie (browser) or an `Authorization: Bearer <token>` header (from the Account page) for scripts and apps. The download/stream endpoints also accept the token as HTTP Basic auth (`https://user:TOKEN@host/...`) so external download managers and media players (JDownloader, IDM, VLC) work with a plain URL."
   },
   "servers": [{ "url": "/", "description": "This instance" }],
   "security": [{ "bearerAuth": [] }, { "cookieAuth": [] }],

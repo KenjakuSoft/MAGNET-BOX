@@ -117,6 +117,13 @@
     </div>
 
     <div class="card">
+      <h2>Use with download managers (JDownloader, IDM, VLC…)</h2>
+      <p class="desc">Download &amp; stream links also accept the token as <b>HTTP Basic auth</b>, so a plain URL works in any external app — just put your token in the link:</p>
+      <pre id="extexample">https://YOUR_USERNAME:YOUR_TOKEN@HOST/download/3/0</pre>
+      <p class="desc">In the app, use a file's <b>⧉ Copy link</b> button — it copies a ready-to-paste link with your key already embedded. Anyone with that link can download as you, so treat it like a password; rotate the token to revoke old links.</p>
+    </div>
+
+    <div class="card">
       <h2>API quickstart</h2>
       <p class="desc">All endpoints accept the bearer token instead of a login cookie. Full reference: <a href="/docs" style="color:var(--accent)">/docs</a> · <a href="/api/openapi.json" style="color:var(--accent)">openapi.json</a></p>
       <pre id="examples"># list torrents
