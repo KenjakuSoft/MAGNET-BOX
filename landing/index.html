@@ -132,6 +132,25 @@
   /* support */
   .support-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 34px; }
 
+  /* crypto donate */
+  .crypto { margin-top: 24px; text-align: center; }
+  .crypto-label { display: block; color: var(--faint); font: 12.5px var(--mono); margin-bottom: 12px; }
+  .coins { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+  .coin { display: inline-flex; align-items: center; gap: 7px; font: 600 13px var(--sans); color: var(--text);
+    background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 8px 14px; cursor: pointer;
+    transition: border-color .15s, transform .12s ease, background .15s, color .15s; }
+  .coin:hover { border-color: var(--accent-dim); background: var(--surface-2); }
+  .coin:active { transform: translateY(1px); }
+  .coin b { font-size: 15px; line-height: 1; color: var(--accent); }
+  .coin.copied { border-color: var(--accent); color: var(--accent); }
+
+  /* toast */
+  .toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%) translateY(20px);
+    background: var(--accent); color: #042018; font: 600 13px var(--sans); padding: 11px 18px; border-radius: 10px;
+    box-shadow: 0 14px 34px -12px rgba(0,0,0,.65); opacity: 0; pointer-events: none; z-index: 100;
+    transition: opacity .2s ease, transform .2s ease; max-width: 90vw; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
   /* faq */
   .faq { max-width: 760px; margin-top: 36px; }
   details.q { border-bottom: 1px solid var(--line); padding: 4px 0; }
@@ -317,6 +336,16 @@
         <a class="btn primary" href="https://ko-fi.com/lidaf" target="_blank" rel="noopener">☕ Ko-fi</a>
         <a class="btn ghost" href="https://www.paypal.com/donate/?business=JG7J2JMQ8DP38" target="_blank" rel="noopener">💳 PayPal</a>
       </div>
+      <div class="crypto reveal">
+        <span class="crypto-label">or tap a coin to copy the wallet address</span>
+        <div class="coins">
+          <button class="coin" type="button" data-coin="BTC"  data-addr="13sZHQvfYx3o9Ctb4oGX9zeeDDWi8qNJF6"><b>₿</b> BTC</button>
+          <button class="coin" type="button" data-coin="ETH"  data-addr="0x25ab7f10d0d2586838017c24126c420ebc2368dc"><b>Ξ</b> ETH</button>
+          <button class="coin" type="button" data-coin="USDT" data-net="ERC-20" data-addr="0x25ab7f10d0d2586838017c24126c420ebc2368dc"><b>₮</b> USDT</button>
+          <button class="coin" type="button" data-coin="LTC"  data-addr="LSCNAVmn7ozcwBwKqig5LEPAWgiuubRmmB"><b>Ł</b> LTC</button>
+          <button class="coin" type="button" data-coin="DOGE" data-addr="DRzwctKM3JCfmHCRmLUbyYbUbUVGeESmKp"><b>Ð</b> DOGE</button>
+        </div>
+      </div>
       <p style="color:var(--faint);font-size:12.5px;margin-top:18px;text-align:center">Every contribution is optional and goes straight into maintenance, security fixes and new features. Thank you. 🙏</p>
     </div>
   </section>
@@ -330,7 +359,7 @@
         <details class="q"><summary>What do I need to run it?</summary><p>Any small Linux VPS (≈2 vCPU / 4 GB RAM) with disk for your downloads and a domain. A starter box runs a few dollars a month. The README has a complete beginner deploy guide.</p></details>
         <details class="q"><summary>Does it phone home or need our servers?</summary><p>No. It runs entirely on your machine. There's no telemetry and no dependency on us to keep working.</p></details>
         <details class="q"><summary>Can other apps use it?</summary><p>Yes — there's an OpenAPI 3.1 spec and per-user API tokens, so your scripts and media tools can drive it programmatically.</p></details>
-        <details class="q"><summary>How can I support the project?</summary><p>Donations (Ko-fi or PayPal) are the main way — they fund maintenance, security fixes and new features. Sharing the project and reporting bugs helps just as much.</p></details>
+        <details class="q"><summary>How can I support the project?</summary><p>Donations (Ko-fi, PayPal, or crypto) are the main way — they fund maintenance, security fixes and new features. Sharing the project and reporting bugs helps just as much.</p></details>
       </div>
     </div>
   </section>
@@ -359,6 +388,8 @@
     </div>
   </footer>
 
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
 <script>
   // mobile menu
   const ml = document.getElementById('navlinks'), mb = document.getElementById('menuBtn');
@@ -373,6 +404,43 @@
   document.querySelectorAll('.reveal').forEach(el => io.observe(el));
   // year
   document.getElementById('yr').textContent = new Date().getFullYear();
+  // crypto: tap a coin to copy its address
+  const toast = document.getElementById('toast');
+  let toastTimer;
+  const showToast = (msg) => {
+    toast.textContent = msg;
+    toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('show'), 2400);
+  };
+  const copyText = async (text) => {
+    try {
+      if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); return true; }
+    } catch (e) { /* fall through to legacy path */ }
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed'; ta.style.top = '-1000px'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok;
+    } catch (e) { return false; }
+  };
+  document.querySelectorAll('.coin').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const addr = btn.getAttribute('data-addr');
+      const net = btn.getAttribute('data-net');
+      const label = btn.getAttribute('data-coin') + (net ? ' (' + net + ')' : '');
+      if (await copyText(addr)) {
+        showToast(label + ' address copied!');
+        btn.classList.add('copied');
+        setTimeout(() => btn.classList.remove('copied'), 1300);
+      } else {
+        showToast(addr); // copy failed — show the address so it can be copied manually
+      }
+    });
+  });
 </script>
 </body>
 </html>
