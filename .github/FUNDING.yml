@@ -1,3 +1,5 @@
 # Powers the "Sponsor" button on the GitHub repo page.
 ko_fi: lidaf
-custom: ["https://www.paypal.com/donate/?business=JG7J2JMQ8DP38"]
+custom:
+  - "https://www.paypal.com/donate/?business=JG7J2JMQ8DP38"
+  - "https://github.com/KenjakuSoft/MAGNET-BOX#crypto"   # crypto wallet addresses
