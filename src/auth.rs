@@ -67,7 +67,7 @@ pub enum LoginOutcome {
     TwoFactor(String),
 }
 
-/// An invite code (Demonoid-style closed registration).
+/// An invite code (closed, invite-only registration).
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Invite {
     pub code: String,

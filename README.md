@@ -48,7 +48,7 @@ BitTorrent engine, so there's no external torrent client to install.
 | ▶️ **Stream while downloading** | In-app video/audio player seeks before the file finishes; subtitles auto-loaded from the torrent's `.srt` (→ WebVTT). |
 | ✅ **Pick what to download** | Per-file checkboxes (live), select all/none, and an **add-paused** option to choose files *before* anything downloads. |
 | 🔐 **Login + multi-user** | argon2 passwords, server-side sessions, roles, and a full **admin console** at `/admin`. |
-| 🎟 **Invite-only registration** | Demonoid-style closed sign-up — invite codes (single/multi-use, optional expiry) + an open/close toggle and **maintenance mode**. |
+| 🎟 **Invite-only registration** | Closed sign-up — invite codes (single/multi-use, optional expiry) + an open/close toggle and **maintenance mode**. |
 | 🛡️ **2FA (TOTP)** | Optional per-account, QR enrollment in any authenticator app, with one-time **recovery codes**. |
 | 📈 **Host & usage metrics** | Live **CPU / RAM / disk** in the admin Overview; **per-user bandwidth**, last-seen and IP in the Users table. |
 | 🚦 **Per-user limits** | Admin-set cap on simultaneous direct downloads per user (`0` = unlimited). |
