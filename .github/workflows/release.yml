@@ -1,0 +1,48 @@
+name: Release
+
+# Builds ready-to-run binaries (no Rust needed by users) and attaches them to a
+# GitHub Release whenever a version tag like v0.1.0 is pushed.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: linux-x64
+            bin: magnetbox
+            asset: magnetbox-linux-x64
+          - os: windows-latest
+            label: windows-x64
+            bin: magnetbox.exe
+            asset: magnetbox-windows-x64.exe
+          - os: macos-latest
+            label: macos-arm64
+            bin: magnetbox
+            asset: magnetbox-macos-arm64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build release binary
+        run: cargo build --release --locked
+      - name: Stage binary
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp "target/release/${{ matrix.bin }}" "dist/${{ matrix.asset }}"
+      - name: Attach to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/${{ matrix.asset }}
+          generate_release_notes: true
