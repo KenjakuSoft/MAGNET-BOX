@@ -3,12 +3,10 @@
 Two self-contained pages — `index.html` (landing) and `docs.html` (documentation).
 No build step, no external scripts/fonts. Host the **whole folder free** on a static host.
 
-## Before you publish — fill in the placeholders
-Search both files for `TODO` and replace:
-- **Donation links** (`Ko-fi` / `PayPal`, in `index.html` `#support`) → already wired; update if your handles change.
-- **"Live demo"** (nav) → your demo instance URL (or remove the link).
-- **GitHub / repo links** (nav + `docs.html` top bar) → your repository URL.
-- The `docs.html` link is already wired into the landing nav/footer — no change needed.
+## Before you publish
+Donation links (Ko-fi / PayPal / crypto), GitHub links, and the `docs.html` link
+are already wired in — no placeholders left to fill. Update the donation handles
+in `index.html` (`#support`) only if yours change.
 
 ## Deploy free — Cloudflare Pages (recommended)
 1. Put this `landing/` folder in a Git repo (GitHub/GitLab).
