@@ -141,7 +141,7 @@
     transition: border-color .15s, transform .12s ease, background .15s, color .15s; }
   .coin:hover { border-color: var(--accent-dim); background: var(--surface-2); }
   .coin:active { transform: translateY(1px); }
-  .coin b { font-size: 15px; line-height: 1; color: var(--accent); }
+  .coin svg { width: 18px; height: 18px; display: block; flex: none; }
   .coin.copied { border-color: var(--accent); color: var(--accent); }
 
   /* toast */
@@ -339,11 +339,26 @@
       <div class="crypto reveal">
         <span class="crypto-label">or tap a coin to copy the wallet address</span>
         <div class="coins">
-          <button class="coin" type="button" data-coin="BTC"  data-addr="13sZHQvfYx3o9Ctb4oGX9zeeDDWi8qNJF6"><b>₿</b> BTC</button>
-          <button class="coin" type="button" data-coin="ETH"  data-addr="0x25ab7f10d0d2586838017c24126c420ebc2368dc"><b>Ξ</b> ETH</button>
-          <button class="coin" type="button" data-coin="USDT" data-net="ERC-20" data-addr="0x25ab7f10d0d2586838017c24126c420ebc2368dc"><b>₮</b> USDT</button>
-          <button class="coin" type="button" data-coin="LTC"  data-addr="LSCNAVmn7ozcwBwKqig5LEPAWgiuubRmmB"><b>Ł</b> LTC</button>
-          <button class="coin" type="button" data-coin="DOGE" data-addr="DRzwctKM3JCfmHCRmLUbyYbUbUVGeESmKp"><b>Ð</b> DOGE</button>
+          <button class="coin" type="button" data-coin="BTC" data-addr="13sZHQvfYx3o9Ctb4oGX9zeeDDWi8qNJF6">
+            <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="16" fill="#F7931A"/><path fill="#fff" d="M23.19 14.02c.31-2.1-1.29-3.22-3.47-3.97l.71-2.84-1.73-.43-.69 2.76c-.45-.11-.92-.22-1.38-.32l.69-2.78L15.6 6l-.71 2.84c-.38-.09-.75-.17-1.1-.26v-.01l-2.39-.6-.46 1.85s1.28.3 1.26.31c.7.18.83.64.81 1.01l-.81 3.23c.05.01.11.03.18.06l-.18-.05-1.13 4.53c-.09.21-.3.53-.79.41.02.03-1.26-.31-1.26-.31l-.86 1.98 2.25.56c.42.11.83.22 1.23.32l-.71 2.87 1.73.43.71-2.84c.47.13.93.24 1.38.36l-.71 2.83 1.73.43.72-2.87c2.95.56 5.16.33 6.1-2.33.75-2.15-.04-3.39-1.59-4.19 1.13-.26 1.98-1 2.21-2.54zm-3.95 5.54c-.53 2.15-4.15.99-5.32.7l.95-3.81c1.17.29 4.93.87 4.37 3.11zm.54-5.57c-.49 1.95-3.5.96-4.47.72l.86-3.45c.97.24 4.12.7 3.61 2.73z"/></svg>
+            BTC
+          </button>
+          <button class="coin" type="button" data-coin="ETH" data-addr="0x25ab7f10d0d2586838017c24126c420ebc2368dc">
+            <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="16" fill="#627EEA"/><g fill="#fff" fill-rule="nonzero"><path fill-opacity=".6" d="M16.5 4v8.87l7.5 3.35z"/><path d="M16.5 4L9 16.22l7.5-3.35z"/><path fill-opacity=".6" d="M16.5 21.97V28L24 17.62z"/><path d="M16.5 28v-6.03L9 17.62z"/><path fill-opacity=".2" d="M16.5 20.57l7.5-4.35-7.5-3.35z"/><path fill-opacity=".6" d="M9 16.22l7.5 4.35v-7.7z"/></g></svg>
+            ETH
+          </button>
+          <button class="coin" type="button" data-coin="USDT" data-net="ERC-20" data-addr="0x25ab7f10d0d2586838017c24126c420ebc2368dc">
+            <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="16" fill="#26A17B"/><path fill="#fff" d="M17.92 17.38c-.11.01-.68.04-1.94.04-1.01 0-1.72-.03-1.97-.04-3.89-.17-6.79-.85-6.79-1.66 0-.81 2.9-1.48 6.79-1.66v2.65c.25.01.98.06 1.99.06 1.2 0 1.81-.05 1.92-.06v-2.65c3.88.18 6.78.85 6.78 1.66 0 .81-2.9 1.48-6.78 1.66m0-3.59v-2.37h5.42V7.82H8.6v3.61h5.41v2.36c-4.4.2-7.71 1.08-7.71 2.12 0 1.04 3.31 1.91 7.71 2.12v7.58h3.91v-7.58c4.39-.2 7.69-1.07 7.69-2.12 0-1.04-3.3-1.91-7.69-2.12"/></svg>
+            USDT
+          </button>
+          <button class="coin" type="button" data-coin="LTC" data-addr="LSCNAVmn7ozcwBwKqig5LEPAWgiuubRmmB">
+            <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="16" fill="#345D9D"/><path fill="#fff" d="M10.43 19.21L9 19.77l.7-2.69 1.44-.55 2.04-7.76h5.13l-1.52 5.82 1.4-.55-.68 2.6-1.41.54-.82 3.12h7.79L21.84 24H8.05z"/></svg>
+            LTC
+          </button>
+          <button class="coin" type="button" data-coin="DOGE" data-addr="DRzwctKM3JCfmHCRmLUbyYbUbUVGeESmKp">
+            <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="16" fill="#C2A633"/><path fill="#fff" d="M13.25 14.47h3.27v2.45h-3.27V20h2.73c.55 0 4.52.06 4.51-4.05 0-4.12-3.86-3.99-4.51-3.99h-2.73v2.51zm-2-4.47h5.28c2.83 0 6.92 1.5 6.92 6.37s-3.96 6.5-6.7 6.5h-5.5v-5.49H9v-2.45h2.25V10z"/></svg>
+            DOGE
+          </button>
         </div>
       </div>
       <p style="color:var(--faint);font-size:12.5px;margin-top:18px;text-align:center">Every contribution is optional and goes straight into maintenance, security fixes and new features. Thank you. 🙏</p>
