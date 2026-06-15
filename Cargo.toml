@@ -1,6 +1,6 @@
 [package]
 name = "magnetbox"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Self-hosted magnet/torrent → direct HTTP download & streaming, in one Rust binary. Built on librqbit."
 

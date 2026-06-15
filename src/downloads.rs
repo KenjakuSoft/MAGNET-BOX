@@ -3,7 +3,7 @@
 //! manager — NOT premium-host unlocking.
 
 use std::collections::HashMap;
-use std::net::{IpAddr, Ipv4Addr, ToSocketAddrs};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -63,32 +63,14 @@ pub struct DirectView {
 #[derive(Clone)]
 pub struct DirectManager {
     dir: PathBuf,
-    client: reqwest::Client,
     items: Arc<Mutex<HashMap<usize, Arc<Item>>>>,
     next_id: Arc<AtomicUsize>,
 }
 
 impl DirectManager {
     pub fn new(dir: PathBuf) -> Self {
-        // SSRF guard: re-validate the target on every redirect hop so a public
-        // URL can't bounce us into the private network / cloud metadata.
-        let redirect = reqwest::redirect::Policy::custom(|attempt| {
-            if attempt.previous().len() >= 8 {
-                return attempt.error("too many redirects");
-            }
-            match host_is_public(attempt.url()) {
-                true => attempt.follow(),
-                false => attempt.stop(),
-            }
-        });
-        let client = reqwest::Client::builder()
-            .user_agent("MagnetBox/0.1")
-            .redirect(redirect)
-            .build()
-            .unwrap_or_default();
         let mgr = Self {
             dir,
-            client,
             items: Default::default(),
             next_id: Arc::new(AtomicUsize::new(0)),
         };
@@ -107,7 +89,10 @@ impl DirectManager {
         let mut items = self.items.lock().unwrap();
         let mut max_id = 0;
         for r in records {
-            let path = self.dir.join(r.id.to_string()).join(&r.filename);
+            // Re-sanitize on load: never trust a filename read back from disk
+            // (defense-in-depth against a tampered index.json).
+            let filename = sanitize_filename(&r.filename);
+            let path = self.dir.join(r.id.to_string()).join(&filename);
             if let Ok(meta) = std::fs::metadata(&path) {
                 let len = meta.len();
                 items.insert(
@@ -115,7 +100,7 @@ impl DirectManager {
                     Arc::new(Item {
                         id: r.id,
                         url: r.url,
-                        filename: r.filename,
+                        filename,
                         path,
                         owner: r.owner,
                         created: r.created,
@@ -188,16 +173,16 @@ impl DirectManager {
         });
         self.items.lock().unwrap().insert(id, item.clone());
 
-        let client = self.client.clone();
         let mgr = self.clone();
         tokio::spawn(async move {
-            match download(&client, &item).await {
+            match download(&item).await {
                 Ok(()) => {
                     *item.phase.lock().unwrap() = Phase::Done;
                     mgr.persist();
                 }
                 Err(e) => {
-                    *item.error.lock().unwrap() = Some(format!("{e:#}"));
+                    // Top-level message only — don't surface the internal context chain.
+                    *item.error.lock().unwrap() = Some(format!("{e}"));
                     *item.phase.lock().unwrap() = Phase::Error;
                 }
             }
@@ -294,9 +279,18 @@ impl Item {
     }
 }
 
-async fn download(client: &reqwest::Client, item: &Item) -> Result<()> {
-    // SSRF guard: resolve the host and refuse private/loopback/link-local/etc.
-    verify_public(&item.url).await?;
+async fn download(item: &Item) -> Result<()> {
+    // SSRF guard: resolve the host once, verify every IP is public, then PIN the
+    // connection to those exact IPs. Pinning closes the DNS-rebinding (TOCTOU)
+    // window where a low-TTL attacker domain could pass the check and then
+    // resolve to 127.0.0.1 / 169.254.169.254 for the actual fetch.
+    let url = Url::parse(&item.url).map_err(|_| anyhow!("invalid URL"))?;
+    let host = url
+        .host_str()
+        .ok_or_else(|| anyhow!("URL has no host"))?
+        .to_string();
+    let verified = verify_public(&item.url).await?;
+    let client = pinned_client(&host, &verified)?;
 
     if let Some(parent) = item.path.parent() {
         tokio::fs::create_dir_all(parent)
@@ -331,8 +325,9 @@ async fn download(client: &reqwest::Client, item: &Item) -> Result<()> {
 
 /// Async SSRF check: resolve the URL's host and reject if it maps to any
 /// private/loopback/link-local/etc. address (blocks localhost, internal hosts,
-/// and cloud metadata like 169.254.169.254).
-async fn verify_public(raw: &str) -> Result<()> {
+/// and cloud metadata like 169.254.169.254). Returns the verified public
+/// addresses so the caller can pin the connection to them.
+async fn verify_public(raw: &str) -> Result<Vec<SocketAddr>> {
     let url = Url::parse(raw).map_err(|_| anyhow!("invalid URL"))?;
     if !matches!(url.scheme(), "http" | "https") {
         return Err(anyhow!("only http(s) URLs are allowed"));
@@ -340,19 +335,39 @@ async fn verify_public(raw: &str) -> Result<()> {
     let host = url.host_str().ok_or_else(|| anyhow!("URL has no host"))?;
     let port = url.port_or_known_default().unwrap_or(443);
 
-    let mut resolved = tokio::net::lookup_host((host, port))
+    let resolved: Vec<SocketAddr> = tokio::net::lookup_host((host, port))
         .await
         .map_err(|_| anyhow!("could not resolve host"))?
-        .peekable();
-    if resolved.peek().is_none() {
+        .collect();
+    if resolved.is_empty() {
         return Err(anyhow!("could not resolve host"));
     }
-    if resolved.any(|addr| !is_global_ip(&addr.ip())) {
-        return Err(anyhow!(
-            "refusing to fetch a private or internal address"
-        ));
+    if resolved.iter().any(|addr| !is_global_ip(&addr.ip())) {
+        return Err(anyhow!("refusing to fetch a private or internal address"));
     }
-    Ok(())
+    Ok(resolved)
+}
+
+/// Build an HTTP client whose DNS for `host` is pinned to the already-verified
+/// public addresses, with a redirect policy that re-checks every hop is public.
+fn pinned_client(host: &str, addrs: &[SocketAddr]) -> Result<reqwest::Client> {
+    // Re-validate the target on every redirect hop so a public URL can't bounce
+    // us into the private network / cloud metadata.
+    let redirect = reqwest::redirect::Policy::custom(|attempt| {
+        if attempt.previous().len() >= 8 {
+            return attempt.error("too many redirects");
+        }
+        match host_is_public(attempt.url()) {
+            true => attempt.follow(),
+            false => attempt.stop(),
+        }
+    });
+    reqwest::Client::builder()
+        .user_agent("MagnetBox/0.1")
+        .redirect(redirect)
+        .resolve_to_addrs(host, addrs)
+        .build()
+        .context("building http client")
 }
 
 /// Synchronous variant used inside the redirect policy (reqwest resolves).
@@ -405,8 +420,14 @@ fn is_global_v4(v4: &Ipv4Addr) -> bool {
 fn filename_from_url(url: &str) -> String {
     let no_query = url.split(['?', '#']).next().unwrap_or(url);
     let last = no_query.rsplit('/').next().unwrap_or("");
-    let decoded = percent_decode(last);
-    let cleaned: String = decoded
+    sanitize_filename(&percent_decode(last))
+}
+
+/// Reduce any string to a safe, single-segment filename: strip path separators
+/// and NULs, and never allow a traversal token. Used both when deriving a name
+/// from a URL and when reading one back from `index.json`.
+fn sanitize_filename(name: &str) -> String {
+    let cleaned: String = name
         .chars()
         .filter(|c| !matches!(c, '/' | '\\' | '\0'))
         .collect();
@@ -445,6 +466,25 @@ fn now() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sanitize_filename_blocks_traversal_and_separators() {
+        assert_eq!(sanitize_filename(".."), "download.bin");
+        assert_eq!(sanitize_filename("."), "download.bin");
+        assert_eq!(sanitize_filename(""), "download.bin");
+        // path separators are stripped, so no segment can escape the folder
+        assert_eq!(sanitize_filename("../../etc/passwd"), "....etcpasswd");
+        assert_eq!(sanitize_filename("a/b\\c"), "abc");
+        assert_eq!(sanitize_filename("movie.mkv"), "movie.mkv");
+    }
+
+    #[test]
+    fn filename_from_url_is_traversal_safe() {
+        // a percent-encoded slash in the final segment decodes ("../file") then
+        // gets stripped to "..file" — never an actual path separator.
+        assert_eq!(filename_from_url("http://h/dir/%2e%2e%2ffile"), "..file");
+        assert_eq!(filename_from_url("http://h/dir/clip.mp4?x=1"), "clip.mp4");
+    }
 
     fn item(id: usize, age_secs: u64) -> Arc<Item> {
         Arc::new(Item {

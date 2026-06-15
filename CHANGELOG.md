@@ -3,6 +3,17 @@
 All notable changes to MagnetBox are documented here. This project follows
 [Keep a Changelog](https://keepachangelog.com/) and [Semantic Versioning](https://semver.org/).
 
+## [0.1.1] — 2026-06-16
+
+Security hardening release (from a full audit — no Critical/High issues were found; these are the Medium/Low fixes).
+
+### Security
+- **SSRF / DNS-rebinding (TOCTOU) hardened** — the direct-link downloader now resolves the host once, verifies every IP is public, and **pins the connection** to those exact addresses, closing the window where a rebinding domain could pass the check and then resolve to `127.0.0.1` / `169.254.169.254`.
+- **Stopped leaking internal error detail** — stream/seek/file errors now return generic client messages and log the detail server-side; other handlers no longer expose the full error context chain.
+- **Content-Security-Policy** added (same-origin default, `object-src 'none'`, `frame-ancestors 'none'`, restricted `base-uri`/`form-action`).
+- **Constant-time API-token comparison** (avoids byte-by-byte timing leakage).
+- **Direct-download filenames re-sanitized on load** from `index.json` (defense-in-depth against a tampered data dir).
+
 ## [0.1.0] — 2026-06-15
 
 First public release.

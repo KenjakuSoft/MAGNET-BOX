@@ -136,6 +136,19 @@ async fn security_headers(req: Request, next: Next) -> Response {
         "permissions-policy",
         HeaderValue::from_static("camera=(), microphone=(), geolocation=()"),
     );
+    // Content-Security-Policy: defense-in-depth. The embedded UI keeps inline
+    // scripts/handlers, so script/style allow 'unsafe-inline'; everything else
+    // is locked to same-origin, plugins blocked, framing/base/form restricted.
+    // User-supplied values are still HTML-escaped at the source.
+    h.insert(
+        "content-security-policy",
+        HeaderValue::from_static(
+            "default-src 'self'; img-src 'self' data:; media-src 'self' blob:; \
+             script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; \
+             connect-src 'self'; object-src 'none'; base-uri 'self'; \
+             frame-ancestors 'none'; form-action 'self'",
+        ),
+    );
     resp
 }
 
@@ -577,21 +590,21 @@ async fn set_files(
 ) -> Response {
     match app.set_files(id, req.files).await {
         Ok(()) => Json(json!({ "ok": true })).into_response(),
-        Err(e) => err(StatusCode::BAD_REQUEST, &format!("{e:#}")),
+        Err(e) => err(StatusCode::BAD_REQUEST, &format!("{e}")),
     }
 }
 
 async fn pause(State(app): State<App>, Path(id): Path<usize>) -> Response {
     match app.pause(id).await {
         Ok(()) => Json(json!({ "ok": true })).into_response(),
-        Err(e) => err(StatusCode::BAD_REQUEST, &format!("{e:#}")),
+        Err(e) => err(StatusCode::BAD_REQUEST, &format!("{e}")),
     }
 }
 
 async fn resume(State(app): State<App>, Path(id): Path<usize>) -> Response {
     match app.resume(id).await {
         Ok(()) => Json(json!({ "ok": true })).into_response(),
-        Err(e) => err(StatusCode::BAD_REQUEST, &format!("{e:#}")),
+        Err(e) => err(StatusCode::BAD_REQUEST, &format!("{e}")),
     }
 }
 
@@ -609,7 +622,7 @@ async fn delete(
 ) -> Response {
     match app.delete(id, q.files).await {
         Ok(()) => Json(json!({ "ok": true })).into_response(),
-        Err(e) => err(StatusCode::BAD_REQUEST, &format!("{e:#}")),
+        Err(e) => err(StatusCode::BAD_REQUEST, &format!("{e}")),
     }
 }
 
@@ -640,7 +653,10 @@ async fn serve(app: App, id: usize, file: usize, headers: HeaderMap, attachment:
     let base = basename(&rel_name);
     let file_stream = match handle.clone().stream(file) {
         Ok(s) => s,
-        Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("stream error: {e:#}")),
+        Err(e) => {
+            tracing::error!(torrent = id, file, error = %format!("{e:#}"), "stream open failed");
+            return err(StatusCode::INTERNAL_SERVER_ERROR, "could not open file for streaming");
+        }
     };
     let total = file_stream.len();
     let range = parse_range_header(&headers, total);
@@ -692,7 +708,8 @@ where
         Some((start, end)) => {
             let len = end - start + 1;
             if let Err(e) = reader.seek(SeekFrom::Start(start)).await {
-                return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("seek error: {e}"));
+                tracing::error!(error = %e, "range seek failed");
+                return err(StatusCode::INTERNAL_SERVER_ERROR, "could not read the requested range");
             }
             out.insert(header::CONTENT_LENGTH, HeaderValue::from(len));
             if let Ok(v) = HeaderValue::from_str(&format!("bytes {start}-{end}/{total}")) {
@@ -762,7 +779,10 @@ async fn subtitle(
     };
     let stream = match handle.clone().stream(file) {
         Ok(s) => s,
-        Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &format!("stream error: {e:#}")),
+        Err(e) => {
+            tracing::error!(torrent = id, file, error = %format!("{e:#}"), "subtitle stream open failed");
+            return err(StatusCode::INTERNAL_SERVER_ERROR, "could not open subtitle");
+        }
     };
     let mut buf = Vec::new();
     // Subtitles are tiny; cap the read so a wrong index can't pull a huge file.

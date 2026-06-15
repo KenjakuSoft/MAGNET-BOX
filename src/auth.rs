@@ -600,7 +600,8 @@ impl Auth {
         Ok(token)
     }
 
-    /// Resolve a bearer API token to an identity.
+    /// Resolve a bearer API token to an identity. Uses a constant-time compare
+    /// so the match can't be reconstructed byte-by-byte via response timing.
     pub fn user_by_token(&self, token: &str) -> Option<Identity> {
         if token.is_empty() {
             return None;
@@ -609,7 +610,11 @@ impl Auth {
             .lock()
             .unwrap()
             .values()
-            .find(|u| u.api_token.as_deref() == Some(token))
+            .find(|u| {
+                u.api_token
+                    .as_deref()
+                    .is_some_and(|t| ct_eq(t.as_bytes(), token.as_bytes()))
+            })
             .map(|u| Identity {
                 username: u.username.clone(),
                 role: u.role,
@@ -1058,6 +1063,20 @@ fn b64_decode(s: &str) -> Option<Vec<u8>> {
     Some(out)
 }
 
+/// Constant-time byte-slice equality — no early return on first mismatch, so a
+/// secret can't be reconstructed byte-by-byte from timing. Differing lengths
+/// short-circuit (token lengths are fixed and not themselves secret).
+fn ct_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
 /// Read the session token from the `Cookie` header.
 pub fn token_from_headers(headers: &HeaderMap) -> Option<String> {
     let raw = headers.get(header::COOKIE)?.to_str().ok()?;
@@ -1341,5 +1360,13 @@ mod tests {
     fn basic_password_none_without_basic_header() {
         let h = HeaderMap::new();
         assert!(basic_password(&h).is_none());
+    }
+
+    #[test]
+    fn ct_eq_matches_only_identical_bytes() {
+        assert!(ct_eq(b"mb_secrettoken", b"mb_secrettoken"));
+        assert!(!ct_eq(b"mb_secrettoken", b"mb_secrettokem")); // one byte differs
+        assert!(!ct_eq(b"short", b"longer-value")); // different lengths
+        assert!(ct_eq(b"", b"")); // both empty
     }
 }
