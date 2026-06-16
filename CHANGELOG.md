@@ -3,6 +3,19 @@
 All notable changes to MagnetBox are documented here. This project follows
 [Keep a Changelog](https://keepachangelog.com/) and [Semantic Versioning](https://semver.org/).
 
+## [0.1.2] — 2026-06-16
+
+### Added
+- **Play (almost) any media type in the browser** — optional on-the-fly transcoding via `ffmpeg` (auto-detected on `PATH`). When the browser can't decode a file's video codec (e.g. MKV / H.265), the player automatically switches to a server-side H.264 + AAC fragmented-MP4 stream. It works **while the torrent is still downloading** (the file's piece stream is piped straight into ffmpeg). With no ffmpeg installed it falls back to the "open in an external player" hint.
+- **Fullscreen** button (and `f` shortcut) in the in-app player.
+- A notice in the player when the browser can't render the video, pointing to the transcode / external player.
+
+### Security / limits
+- Per-user cap on concurrent transcodes (each is a live ffmpeg encode) so one account can't exhaust the server's CPU.
+
+### Changed
+- Internal rustfmt / clippy cleanups (import ordering, extracted type aliases, line wrapping).
+
 ## [0.1.1] — 2026-06-16
 
 Security hardening release (from a full audit — no Critical/High issues were found; these are the Medium/Low fixes).

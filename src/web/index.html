@@ -159,6 +159,7 @@
   .player-top .pname { font-weight: 600; font-size: 14px; word-break: break-all; }
   .player-top .closex { margin-left: auto; }
   .overlay video { flex: 1; width: 100%; min-height: 0; background: #000; outline: none; }
+  .player-note { margin: 0 18px 10px; padding: 10px 14px; font-size: 13px; line-height: 1.5; color: #ffcf5c; background: rgba(255,207,92,.1); border: 1px solid rgba(255,207,92,.3); border-radius: 8px; }
   /* Modal dialog (replaces native confirm/prompt) */
   .modal-backdrop { position: fixed; inset: 0; background: rgba(3,6,9,.6); display: none; place-items: center; z-index: 70; }
   .modal-backdrop.open { display: grid; }
@@ -239,9 +240,11 @@
   <div class="overlay" id="player">
     <div class="player-top">
       <span class="pname" id="playerName"></span>
+      <button class="btn small ghost" id="fsBtn" onclick="toggleFullscreen()" title="Fullscreen (f)" style="margin-left:auto">⛶ Fullscreen</button>
       <button class="btn small ghost closex" onclick="closePlayer()">✕ Close</button>
     </div>
-    <video controls playsinline></video>
+    <div class="player-note" id="playerNote" hidden></div>
+    <video controls playsinline preload="auto"></video>
   </div>
 
   <div class="modal-backdrop" id="modal"><div class="modal" id="modalBox"></div></div>
@@ -646,8 +649,17 @@ function play(tid, idx) {
   ).join('');
   openPlayer(`/stream/${tid}/${idx}`, f.name.split('/').pop(), tracks);
 }
+let CODEC_NOTED = false, TRANSCODE_TRIED = false, CUR_SRC = '';
+// Map a native stream URL to its server-side transcode (ffmpeg) URL.
+function transcodeUrlFor(src) {
+  if (src.startsWith('/stream/')) return '/transcode/' + src.slice(8);
+  if (src.startsWith('/dl/')) return '/transcode-dl/' + src.slice(4);
+  return null;
+}
 function openPlayer(src, name, tracks) {
   const v = $('#player video');
+  CODEC_NOTED = false; TRANSCODE_TRIED = false; CUR_SRC = src;
+  hidePlayerNote();
   v.pause(); v.innerHTML = tracks || ''; v.src = src;
   $('#playerName').textContent = name;
   $('#player').classList.add('open');
@@ -655,12 +667,58 @@ function openPlayer(src, name, tracks) {
 }
 function closePlayer() {
   const v = $('#player video');
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   v.pause(); v.removeAttribute('src'); v.innerHTML = ''; v.load();
+  hidePlayerNote();
   $('#player').classList.remove('open');
 }
+function toggleFullscreen() {
+  const v = $('#player video');
+  if (document.fullscreenElement) { document.exitFullscreen().catch(() => {}); return; }
+  const req = v.requestFullscreen || v.webkitRequestFullscreen || v.webkitEnterFullscreen;
+  if (req) { try { req.call(v); } catch (e) {} }
+}
+function hidePlayerNote() { const n = $('#playerNote'); n.hidden = true; n.textContent = ''; }
+function showPlayerNote(html) { const n = $('#playerNote'); n.innerHTML = html; n.hidden = false; }
+function settle(html) { CODEC_NOTED = true; html ? showPlayerNote(html) : hidePlayerNote(); }
+// Switch to the server-side converted stream (needs ffmpeg). Returns true if started.
+function tryTranscode() {
+  if (TRANSCODE_TRIED) return false;
+  const url = transcodeUrlFor(CUR_SRC);
+  if (!url) return false;
+  TRANSCODE_TRIED = true;
+  const v = $('#player video');
+  showPlayerNote('⏳ Converting on the server for your browser — this can take a few seconds, and seeking may be limited.');
+  v.src = url; v.load(); v.play().catch(() => {});
+  return true;
+}
+// When the browser plays audio but renders no video (videoWidth === 0), the
+// video codec is unsupported (common with MKV / H.265). Auto-fall back to the
+// transcode; if that's unavailable (no ffmpeg), point to an external player.
+(() => {
+  const v = $('#player video');
+  v.addEventListener('timeupdate', () => {
+    if (CODEC_NOTED || v.currentTime < 0.2) return;
+    if (v.videoWidth > 0) {
+      settle(TRANSCODE_TRIED ? '▶ Playing a server-converted stream — seeking may be limited.' : null);
+      return;
+    }
+    if (tryTranscode()) return;
+    settle("⚠️ Your browser can't decode this file's <b>video</b>, and the server can't convert it (no ffmpeg). Open it in VLC / Infuse via the <b>⧉ Copy link</b> button.");
+  });
+  v.addEventListener('error', () => {
+    if (CODEC_NOTED) return;
+    if (tryTranscode()) return;
+    settle("⚠️ Couldn't play this in the browser. Open it in VLC / Infuse via the <b>⧉ Copy link</b> button. <i>(Install ffmpeg on the server to auto-convert unsupported files.)</i>");
+  });
+})();
 function subLang(n) { const m = n.match(/\.([a-z]{2,3})\.(srt|vtt)$/i); return m ? m[1].toLowerCase() : ''; }
 function subLabel(n) { const l = subLang(n); return l ? l.toUpperCase() : n.split('/').pop(); }
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closePlayer(); });
+document.addEventListener('keydown', e => {
+  if (!$('#player').classList.contains('open')) return;
+  if (e.key === 'Escape') closePlayer();
+  else if (e.key === 'f' || e.key === 'F') toggleFullscreen();
+});
 
 // ---- tabs ----
 function showTab(name) {

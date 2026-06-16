@@ -1,6 +1,9 @@
 //! HTTP layer: JSON control API + the direct download/stream endpoints.
 
+use std::collections::HashMap;
 use std::io::SeekFrom;
+use std::process::Stdio;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use axum::{
@@ -16,6 +19,7 @@ use librqbit::AddTorrent;
 use serde::Deserialize;
 use serde_json::json;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncSeek, AsyncSeekExt};
+use tokio::process::{Child, ChildStdout, Command};
 use tokio_util::io::ReaderStream;
 
 use crate::auth::{require_auth, token_from_headers, Auth, Identity, LoginOutcome, Role};
@@ -32,6 +36,11 @@ pub struct AppState {
     direct: DirectManager,
     metrics: Metrics,
     started: Instant,
+    /// Whether `ffmpeg` is on PATH — enables on-the-fly transcoding so the
+    /// in-browser player can play formats the browser can't decode natively.
+    ffmpeg: bool,
+    /// In-flight transcodes per user, to cap CPU-heavy concurrent conversions.
+    transcodes: Arc<Mutex<HashMap<String, usize>>>,
 }
 
 impl FromRef<AppState> for App {
@@ -51,12 +60,20 @@ impl FromRef<AppState> for DirectManager {
 }
 
 pub fn router(engine: App, auth: Auth, direct: DirectManager, metrics: Metrics) -> Router {
+    let ffmpeg = ffmpeg_available();
+    if ffmpeg {
+        tracing::info!("ffmpeg detected — in-browser transcoding enabled for unsupported formats");
+    } else {
+        tracing::info!("ffmpeg not found — unsupported formats fall back to external players");
+    }
     let state = AppState {
         engine,
         auth: auth.clone(),
         direct,
         metrics,
         started: Instant::now(),
+        ffmpeg,
+        transcodes: Arc::new(Mutex::new(HashMap::new())),
     };
 
     // Everything here needs a valid session (admin-only paths enforced inside
@@ -78,6 +95,8 @@ pub fn router(engine: App, auth: Auth, direct: DirectManager, metrics: Metrics) 
         .route("/api/torrents/:id/delete", post(delete))
         .route("/download/:id/:file", get(download))
         .route("/stream/:id/:file", get(stream))
+        .route("/transcode/:id/:file", get(transcode))
+        .route("/transcode-dl/:id", get(transcode_dl))
         .route("/subtitle/:id/:file", get(subtitle))
         .route("/api/links", get(links_list))
         .route("/api/links/:id/delete", post(links_delete))
@@ -96,17 +115,32 @@ pub fn router(engine: App, auth: Auth, direct: DirectManager, metrics: Metrics) 
         .route("/api/users/:username/delete", post(users_delete))
         .route("/api/users/:username/disabled", post(users_set_disabled))
         .route("/api/users/:username/token", post(users_reset_token))
-        .route("/api/admin/invites", get(admin_invites).post(admin_invite_create))
+        .route(
+            "/api/admin/invites",
+            get(admin_invites).post(admin_invite_create),
+        )
         .route("/api/admin/invites/:code/delete", post(admin_invite_delete))
-        .route("/api/admin/config", get(admin_config_get).post(admin_config_set))
+        .route(
+            "/api/admin/config",
+            get(admin_config_get).post(admin_config_set),
+        )
         .route("/api/admin/overview", get(admin_overview))
         .route("/api/admin/activity", get(admin_activity))
         .route("/api/admin/sessions", get(admin_sessions))
-        .route("/api/admin/sessions/:sid/revoke", post(admin_session_revoke))
-        .route("/api/admin/sessions/revoke-others", post(admin_revoke_others))
+        .route(
+            "/api/admin/sessions/:sid/revoke",
+            post(admin_session_revoke),
+        )
+        .route(
+            "/api/admin/sessions/revoke-others",
+            post(admin_revoke_others),
+        )
         .route("/api/admin/torrents/pause-all", post(admin_pause_all))
         .route("/api/admin/torrents/resume-all", post(admin_resume_all))
-        .route("/api/admin/downloads/clear-completed", post(admin_clear_completed))
+        .route(
+            "/api/admin/downloads/clear-completed",
+            post(admin_clear_completed),
+        )
         .route("/api/admin/cleanup", post(admin_cleanup))
         .route_layer(middleware::from_fn_with_state(auth, require_auth));
 
@@ -129,7 +163,10 @@ pub fn router(engine: App, auth: Auth, direct: DirectManager, metrics: Metrics) 
 async fn security_headers(req: Request, next: Next) -> Response {
     let mut resp = next.run(req).await;
     let h = resp.headers_mut();
-    h.insert("x-content-type-options", HeaderValue::from_static("nosniff"));
+    h.insert(
+        "x-content-type-options",
+        HeaderValue::from_static("nosniff"),
+    );
     h.insert("x-frame-options", HeaderValue::from_static("DENY"));
     h.insert("referrer-policy", HeaderValue::from_static("no-referrer"));
     h.insert(
@@ -427,8 +464,10 @@ async fn admin_config_set(State(auth): State<Auth>, Json(req): Json<ConfigReq>) 
 async fn admin_cleanup(State(s): State<AppState>) -> Response {
     let days = s.auth.retention_days();
     if days == 0 {
-        return Json(json!({ "ok": true, "torrents": 0, "downloads": 0, "note": "retention disabled" }))
-            .into_response();
+        return Json(
+            json!({ "ok": true, "torrents": 0, "downloads": 0, "note": "retention disabled" }),
+        )
+        .into_response();
     }
     let secs = days as u64 * 86_400;
     let torrents = s.engine.remove_expired(secs).await;
@@ -441,7 +480,10 @@ async fn admin_cleanup(State(s): State<AppState>) -> Response {
 async fn admin_overview(State(s): State<AppState>) -> Json<serde_json::Value> {
     let engine = s.engine.summary();
     let downloads = s.direct.list();
-    let dl_running = downloads.iter().filter(|d| d.status == "downloading").count();
+    let dl_running = downloads
+        .iter()
+        .filter(|d| d.status == "downloading")
+        .count();
     let dl_done = downloads.iter().filter(|d| d.status == "done").count();
     let dl_bytes: u64 = downloads.iter().map(|d| d.downloaded).sum();
     let (users, sessions) = s.auth.stats();
@@ -531,9 +573,8 @@ async fn add(
         return err(StatusCode::BAD_REQUEST, "empty source");
     }
     let lower = src.to_ascii_lowercase();
-    let is_torrent = lower.starts_with("magnet:")
-        || lower.ends_with(".torrent")
-        || lower.contains(".torrent?");
+    let is_torrent =
+        lower.starts_with("magnet:") || lower.ends_with(".torrent") || lower.contains(".torrent?");
 
     if is_torrent {
         app.spawn_add(AddTorrent::from_url(src), req.paused, req.trackers);
@@ -547,9 +588,7 @@ async fn add(
             );
         }
         match direct.add(src, id.username.clone()) {
-            Ok(new_id) => {
-                Json(json!({ "ok": true, "kind": "link", "id": new_id })).into_response()
-            }
+            Ok(new_id) => Json(json!({ "ok": true, "kind": "link", "id": new_id })).into_response(),
             Err(e) => err(StatusCode::BAD_REQUEST, &format!("{e}")),
         }
     } else {
@@ -655,7 +694,10 @@ async fn serve(app: App, id: usize, file: usize, headers: HeaderMap, attachment:
         Ok(s) => s,
         Err(e) => {
             tracing::error!(torrent = id, file, error = %format!("{e:#}"), "stream open failed");
-            return err(StatusCode::INTERNAL_SERVER_ERROR, "could not open file for streaming");
+            return err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "could not open file for streaming",
+            );
         }
     };
     let total = file_stream.len();
@@ -677,7 +719,14 @@ async fn serve_disk_file(
     };
     let total = file.metadata().await.map(|m| m.len()).unwrap_or(0);
     let range = parse_range_header(&headers, total);
-    ranged(file, total, content_type(name), attachment.then_some(name), range).await
+    ranged(
+        file,
+        total,
+        content_type(name),
+        attachment.then_some(name),
+        range,
+    )
+    .await
 }
 
 /// Build a (possibly partial) file response from any seekable async reader.
@@ -697,9 +746,10 @@ where
         out.insert(header::CONTENT_TYPE, v);
     }
     if let Some(name) = attachment_name {
-        if let Ok(v) =
-            HeaderValue::from_str(&format!("attachment; filename=\"{}\"", name.replace('"', "")))
-        {
+        if let Ok(v) = HeaderValue::from_str(&format!(
+            "attachment; filename=\"{}\"",
+            name.replace('"', "")
+        )) {
             out.insert(header::CONTENT_DISPOSITION, v);
         }
     }
@@ -709,7 +759,10 @@ where
             let len = end - start + 1;
             if let Err(e) = reader.seek(SeekFrom::Start(start)).await {
                 tracing::error!(error = %e, "range seek failed");
-                return err(StatusCode::INTERNAL_SERVER_ERROR, "could not read the requested range");
+                return err(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "could not read the requested range",
+                );
             }
             out.insert(header::CONTENT_LENGTH, HeaderValue::from(len));
             if let Ok(v) = HeaderValue::from_str(&format!("bytes {start}-{end}/{total}")) {
@@ -770,10 +823,7 @@ async fn direct_file(
 
 // ---- subtitles: convert a torrent's .srt to WebVTT for the <video> player ----
 
-async fn subtitle(
-    State(app): State<App>,
-    Path((id, file)): Path<(usize, usize)>,
-) -> Response {
+async fn subtitle(State(app): State<App>, Path((id, file)): Path<(usize, usize)>) -> Response {
     let Some(handle) = app.get(id) else {
         return err(StatusCode::NOT_FOUND, "no such torrent");
     };
@@ -790,11 +840,7 @@ async fn subtitle(
         return err(StatusCode::INTERNAL_SERVER_ERROR, "could not read subtitle");
     }
     let vtt = srt_to_vtt(&String::from_utf8_lossy(&buf));
-    (
-        [(header::CONTENT_TYPE, "text/vtt; charset=utf-8")],
-        vtt,
-    )
-        .into_response()
+    ([(header::CONTENT_TYPE, "text/vtt; charset=utf-8")], vtt).into_response()
 }
 
 fn srt_to_vtt(srt: &str) -> String {
@@ -853,7 +899,10 @@ async fn account_logout_others(
     Json(json!({ "ok": true })).into_response()
 }
 
-async fn account_2fa_start(State(auth): State<Auth>, Extension(id): Extension<Identity>) -> Response {
+async fn account_2fa_start(
+    State(auth): State<Auth>,
+    Extension(id): Extension<Identity>,
+) -> Response {
     match auth.start_enroll_2fa(&id.username) {
         Ok((secret, url, qr)) => {
             Json(json!({ "ok": true, "secret": secret, "url": url, "qr": qr })).into_response()
@@ -926,6 +975,220 @@ fn parse_range(h: &str, total: u64) -> Option<(u64, u64)> {
         return None;
     }
     Some((start, end))
+}
+
+// ---- on-the-fly transcoding (optional, requires ffmpeg on PATH) ----
+
+/// Is `ffmpeg` available on PATH? Checked once at startup.
+fn ffmpeg_available() -> bool {
+    std::process::Command::new("ffmpeg")
+        .arg("-version")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+/// ffmpeg output args: H.264 + AAC in fragmented MP4 on stdout, so the browser
+/// can play (almost) anything and start before the conversion finishes.
+const FFMPEG_OUT: &[&str] = &[
+    "-c:v",
+    "libx264",
+    "-preset",
+    "veryfast",
+    "-crf",
+    "23",
+    "-pix_fmt",
+    "yuv420p",
+    "-c:a",
+    "aac",
+    "-b:a",
+    "160k",
+    "-ac",
+    "2",
+    "-movflags",
+    "frag_keyframe+empty_moov+default_base_moof",
+    "-f",
+    "mp4",
+    "pipe:1",
+];
+
+/// Max simultaneous transcodes per user — each one runs an ffmpeg encode, so
+/// this caps the CPU a single account can demand.
+const MAX_TRANSCODES_PER_USER: usize = 2;
+
+/// RAII slot for one in-flight transcode; dropping it frees the user's slot.
+struct TranscodeGuard {
+    map: Arc<Mutex<HashMap<String, usize>>>,
+    user: String,
+}
+impl Drop for TranscodeGuard {
+    fn drop(&mut self) {
+        let mut m = self.map.lock().unwrap();
+        if let Some(n) = m.get_mut(&self.user) {
+            *n = n.saturating_sub(1);
+            if *n == 0 {
+                m.remove(&self.user);
+            }
+        }
+    }
+}
+
+/// Reserve a transcode slot for `user`, or `None` if already at the cap.
+fn acquire_transcode(state: &AppState, user: &str) -> Option<TranscodeGuard> {
+    let mut m = state.transcodes.lock().unwrap();
+    let n = m.entry(user.to_string()).or_insert(0);
+    if *n >= MAX_TRANSCODES_PER_USER {
+        return None;
+    }
+    *n += 1;
+    Some(TranscodeGuard {
+        map: state.transcodes.clone(),
+        user: user.to_string(),
+    })
+}
+
+/// Transcode a torrent file: pipe its piece-aware stream (which blocks until
+/// pieces arrive) through ffmpeg and serve the browser-friendly result.
+async fn transcode(
+    State(state): State<AppState>,
+    Extension(ident): Extension<Identity>,
+    Path((id, file)): Path<(usize, usize)>,
+) -> Response {
+    if !state.ffmpeg {
+        return err(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "transcoding unavailable — install ffmpeg on the server",
+        );
+    }
+    let Some(guard) = acquire_transcode(&state, &ident.username) else {
+        return err(
+            StatusCode::TOO_MANY_REQUESTS,
+            "too many active conversions — close another and retry",
+        );
+    };
+    let Some(handle) = state.engine.get(id) else {
+        return err(StatusCode::NOT_FOUND, "no such torrent");
+    };
+    if state.engine.file_name(id, file).is_none() {
+        return err(StatusCode::NOT_FOUND, "no such file (metadata not ready?)");
+    }
+    let stream = match handle.clone().stream(file) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::error!(torrent = id, file, error = %format!("{e:#}"), "transcode stream open failed");
+            return err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "could not open file for transcoding",
+            );
+        }
+    };
+    let mut cmd = Command::new("ffmpeg");
+    cmd.args(["-hide_banner", "-loglevel", "error", "-i", "pipe:0"])
+        .args(FFMPEG_OUT)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .kill_on_drop(true);
+    spawn_transcode_reader(cmd, stream, guard)
+}
+
+/// Transcode a finished direct-link download (read from disk — seekable).
+async fn transcode_dl(
+    State(state): State<AppState>,
+    Extension(ident): Extension<Identity>,
+    Path(id): Path<usize>,
+) -> Response {
+    if !state.ffmpeg {
+        return err(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "transcoding unavailable — install ffmpeg on the server",
+        );
+    }
+    let Some(guard) = acquire_transcode(&state, &ident.username) else {
+        return err(
+            StatusCode::TOO_MANY_REQUESTS,
+            "too many active conversions — close another and retry",
+        );
+    };
+    let Some((path, _name)) = state.direct.path_of(id) else {
+        return err(StatusCode::NOT_FOUND, "no such download");
+    };
+    let mut cmd = Command::new("ffmpeg");
+    cmd.args(["-hide_banner", "-loglevel", "error", "-i"])
+        .arg(&path)
+        .args(FFMPEG_OUT)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .kill_on_drop(true);
+    spawn_transcode_path(cmd, guard)
+}
+
+/// Spawn ffmpeg, feeding `reader` (a non-seekable piece stream) into its stdin,
+/// and stream stdout as the response.
+fn spawn_transcode_reader<R>(mut cmd: Command, reader: R, guard: TranscodeGuard) -> Response
+where
+    R: AsyncRead + Unpin + Send + 'static,
+{
+    let mut child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::error!(error = %e, "failed to start ffmpeg");
+            return err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "could not start the converter",
+            );
+        }
+    };
+    if let Some(mut stdin) = child.stdin.take() {
+        tokio::spawn(async move {
+            let mut reader = reader;
+            let _ = tokio::io::copy(&mut reader, &mut stdin).await;
+        });
+    }
+    finish_transcode(child, guard)
+}
+
+/// Spawn ffmpeg that reads its input itself (e.g. a seekable file path).
+fn spawn_transcode_path(mut cmd: Command, guard: TranscodeGuard) -> Response {
+    match cmd.spawn() {
+        Ok(child) => finish_transcode(child, guard),
+        Err(e) => {
+            tracing::error!(error = %e, "failed to start ffmpeg");
+            err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "could not start the converter",
+            )
+        }
+    }
+}
+
+/// Stream ffmpeg stdout as the response; reap the child so it never lingers
+/// (`kill_on_drop` covers client disconnects and shutdown).
+fn finish_transcode(mut child: Child, guard: TranscodeGuard) -> Response {
+    let Some(stdout) = child.stdout.take() else {
+        return err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "converter produced no output",
+        );
+    };
+    tokio::spawn(async move {
+        let _guard = guard; // releases the per-user slot once ffmpeg exits
+        let _ = child.wait().await;
+    });
+    transcode_response(stdout)
+}
+
+fn transcode_response(stdout: ChildStdout) -> Response {
+    let mut out = HeaderMap::new();
+    out.insert(header::CONTENT_TYPE, HeaderValue::from_static("video/mp4"));
+    out.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    out.insert(header::ACCEPT_RANGES, HeaderValue::from_static("none"));
+    let body = Body::from_stream(ReaderStream::new(stdout));
+    (StatusCode::OK, out, body).into_response()
 }
 
 fn content_type(name: &str) -> &'static str {
