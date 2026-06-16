@@ -162,7 +162,7 @@ impl App {
                 .filter(|id| {
                     added
                         .get(id)
-                        .map_or(false, |t| now.saturating_sub(*t) > max_age_secs)
+                        .is_some_and(|t| now.saturating_sub(*t) > max_age_secs)
                 })
                 .copied()
                 .collect()
@@ -229,8 +229,8 @@ impl App {
     pub fn spawn_add(&self, source: AddTorrent<'static>, paused: bool, add_trackers: bool) {
         let this = self.clone();
         self.pending.fetch_add(1, Ordering::Relaxed);
-        let trackers = add_trackers
-            .then(|| DEFAULT_TRACKERS.iter().map(|s| s.to_string()).collect());
+        let trackers =
+            add_trackers.then(|| DEFAULT_TRACKERS.iter().map(|s| s.to_string()).collect());
         tokio::spawn(async move {
             let fut = this.session.add_torrent(
                 source,
@@ -364,10 +364,9 @@ impl App {
     }
 
     pub fn list(&self) -> Vec<TorrentView> {
-        let handles: Vec<ManagedTorrentHandle> = {
-            self.registry.lock().unwrap().values().cloned().collect()
-        };
-        let mut out: Vec<TorrentView> = handles.iter().map(|h| view(h)).collect();
+        let handles: Vec<ManagedTorrentHandle> =
+            { self.registry.lock().unwrap().values().cloned().collect() };
+        let mut out: Vec<TorrentView> = handles.iter().map(view).collect();
         out.sort_by_key(|v| v.id);
         out
     }
@@ -401,7 +400,7 @@ fn view(h: &ManagedTorrentHandle) -> TorrentView {
                     name: fi.relative_filename.to_string_lossy().into_owned(),
                     len: fi.len,
                     downloaded: stats.file_progress.get(i).copied().unwrap_or(0),
-                    selected: only.as_ref().map_or(true, |v| v.contains(&i)),
+                    selected: only.as_ref().is_none_or(|v| v.contains(&i)),
                 })
                 .collect::<Vec<_>>()
         })

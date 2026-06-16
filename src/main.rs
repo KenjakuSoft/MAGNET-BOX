@@ -33,8 +33,8 @@ async fn main() -> anyhow::Result<()> {
     // http dev, or the browser won't send the session cookie.
     let secure_cookie = env_flag("MAGNETBOX_HTTPS");
     let users_path = data_dir().join("users.json");
-    let auth = auth::Auth::load(users_path.clone(), secure_cookie)
-        .context("failed to initialize auth")?;
+    let auth =
+        auth::Auth::load(users_path.clone(), secure_cookie).context("failed to initialize auth")?;
 
     let app = engine::App::new(download_dir.clone(), data_dir().join("settings.json"))
         .await
@@ -68,7 +68,9 @@ async fn main() -> anyhow::Result<()> {
                     let t = app.remove_expired(secs).await;
                     let d = direct.remove_expired(secs);
                     if t + d > 0 {
-                        tracing::info!("retention: removed {t} torrents + {d} downloads older than {days}d");
+                        tracing::info!(
+                            "retention: removed {t} torrents + {d} downloads older than {days}d"
+                        );
                     }
                 }
             }

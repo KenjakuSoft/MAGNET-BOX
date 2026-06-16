@@ -89,7 +89,7 @@ fn disk_for(dir: &Path) -> (u64, u64) {
         let mount = strip_unc(&d.mount_point().to_string_lossy().to_lowercase());
         if !mount.is_empty() && target_s.starts_with(&mount) {
             let len = mount.len();
-            if best.map_or(true, |(l, _, _)| len > l) {
+            if best.is_none_or(|(l, _, _)| len > l) {
                 best = Some((len, total, avail));
             }
         }

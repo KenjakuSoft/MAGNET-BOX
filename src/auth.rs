@@ -15,8 +15,6 @@ use anyhow::{anyhow, Context, Result};
 use argon2::password_hash::rand_core::{OsRng, RngCore};
 use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 use argon2::Argon2;
-use sha2::{Digest, Sha256};
-use totp_rs::{Algorithm, Secret, TOTP};
 use axum::{
     extract::{Request, State},
     http::{header, HeaderMap, StatusCode},
@@ -25,6 +23,8 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sha2::{Digest, Sha256};
+use totp_rs::{Algorithm, Secret, TOTP};
 
 const COOKIE: &str = "mb_session";
 const SESSION_TTL: Duration = Duration::from_secs(60 * 60 * 24 * 7); // 7 days
@@ -148,6 +148,11 @@ pub struct Event {
 
 const MAX_EVENTS: usize = 300;
 
+/// 2FA enrollment state: username -> (pending TOTP secret, expiry).
+type PendingTwoFactor = HashMap<String, (String, SystemTime)>;
+/// 2FA login step: challenge token -> (username, expiry, attempts).
+type ChallengeMap = HashMap<String, (String, SystemTime, u32)>;
+
 #[derive(Clone)]
 pub struct Auth {
     path: PathBuf,
@@ -165,9 +170,9 @@ pub struct Auth {
     config: Arc<Mutex<AuthConfig>>,
     usage: Arc<Mutex<HashMap<String, Usage>>>,
     /// username -> (pending TOTP secret, expiry) during enrollment.
-    pending_2fa: Arc<Mutex<HashMap<String, (String, SystemTime)>>>,
+    pending_2fa: Arc<Mutex<PendingTwoFactor>>,
     /// challenge token -> (username, expiry, attempts) for the 2FA login step.
-    challenges: Arc<Mutex<HashMap<String, (String, SystemTime, u32)>>>,
+    challenges: Arc<Mutex<ChallengeMap>>,
 }
 
 impl Auth {
@@ -360,11 +365,19 @@ impl Auth {
         if username.is_empty() {
             return Err(anyhow!("username required"));
         }
-        if username.len() > 32 || !username.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
-            return Err(anyhow!("username may only contain letters, numbers, '_' and '-'"));
+        if username.len() > 32
+            || !username
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        {
+            return Err(anyhow!(
+                "username may only contain letters, numbers, '_' and '-'"
+            ));
         }
         if password.len() < MIN_PASSWORD_LEN {
-            return Err(anyhow!("password must be at least {MIN_PASSWORD_LEN} characters"));
+            return Err(anyhow!(
+                "password must be at least {MIN_PASSWORD_LEN} characters"
+            ));
         }
         let mut users = self.users.lock().unwrap();
         if users.contains_key(username) {
@@ -442,7 +455,9 @@ impl Auth {
         // Validate the invite up front (without consuming it yet).
         {
             let invites = self.invites.lock().unwrap();
-            let inv = invites.get(code).ok_or_else(|| anyhow!("invalid invite code"))?;
+            let inv = invites
+                .get(code)
+                .ok_or_else(|| anyhow!("invalid invite code"))?;
             if matches!(inv.expires, Some(exp) if now_unix() > exp) {
                 return Err(anyhow!("this invite code has expired"));
             }
@@ -679,7 +694,10 @@ impl Auth {
 
     /// Drop every session except the caller's (force everyone else to re-login).
     pub fn revoke_all_except(&self, keep_token: &str) {
-        self.sessions.lock().unwrap().retain(|tok, _| tok == keep_token);
+        self.sessions
+            .lock()
+            .unwrap()
+            .retain(|tok, _| tok == keep_token);
     }
 
     pub fn log_event(&self, user: &str, action: &str) {
@@ -715,7 +733,9 @@ impl Auth {
 
     pub fn set_password(&self, username: &str, password: &str) -> Result<()> {
         if password.len() < MIN_PASSWORD_LEN {
-            return Err(anyhow!("password must be at least {MIN_PASSWORD_LEN} characters"));
+            return Err(anyhow!(
+                "password must be at least {MIN_PASSWORD_LEN} characters"
+            ));
         }
         let hash = hash_password(password)?;
         let mut users = self.users.lock().unwrap();
@@ -750,12 +770,13 @@ impl Auth {
             return Err(anyhow!("too many attempts; wait a few minutes"));
         }
 
-        let found = self
-            .users
-            .lock()
-            .unwrap()
-            .get(username)
-            .map(|u| (u.role, u.disabled, verify_password(password, &u.password_hash)));
+        let found = self.users.lock().unwrap().get(username).map(|u| {
+            (
+                u.role,
+                u.disabled,
+                verify_password(password, &u.password_hash),
+            )
+        });
 
         match found {
             None => {
@@ -838,7 +859,9 @@ impl Auth {
         };
         let (secret, role, disabled) = {
             let users = self.users.lock().unwrap();
-            let u = users.get(&username).ok_or_else(|| anyhow!("no such user"))?;
+            let u = users
+                .get(&username)
+                .ok_or_else(|| anyhow!("no such user"))?;
             (u.totp_secret.clone(), u.role, u.disabled)
         };
         if disabled {
@@ -892,7 +915,9 @@ impl Auth {
             s
         };
         if !check_totp(&secret, username, code.trim()) {
-            return Err(anyhow!("incorrect code — check your authenticator app's time"));
+            return Err(anyhow!(
+                "incorrect code — check your authenticator app's time"
+            ));
         }
         let codes: Vec<String> = (0..8).map(|_| gen_recovery_code()).collect();
         let hashes: Vec<String> = codes.iter().map(|c| sha256_hex(c)).collect();
@@ -966,7 +991,9 @@ impl Auth {
 
     fn record_failure(&self, username: &str) {
         let mut t = self.throttle.lock().unwrap();
-        let entry = t.entry(username.to_string()).or_insert((0, SystemTime::now()));
+        let entry = t
+            .entry(username.to_string())
+            .or_insert((0, SystemTime::now()));
         if entry.1.elapsed().unwrap_or_default() > FAIL_WINDOW {
             *entry = (0, SystemTime::now());
         }
@@ -1156,7 +1183,13 @@ fn gen_recovery_code() -> String {
     let mut b = [0u8; 8];
     OsRng.fill_bytes(&mut b);
     let hex: String = b.iter().map(|x| format!("{x:02x}")).collect();
-    format!("{}-{}-{}-{}", &hex[0..4], &hex[4..8], &hex[8..12], &hex[12..16])
+    format!(
+        "{}-{}-{}-{}",
+        &hex[0..4],
+        &hex[4..8],
+        &hex[8..12],
+        &hex[12..16]
+    )
 }
 
 fn sha256_hex(s: &str) -> String {
@@ -1181,7 +1214,9 @@ fn random_password() -> String {
     const CH: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
     let mut b = [0u8; 16];
     OsRng.fill_bytes(&mut b);
-    b.iter().map(|x| CH[(*x as usize) % CH.len()] as char).collect()
+    b.iter()
+        .map(|x| CH[(*x as usize) % CH.len()] as char)
+        .collect()
 }
 
 /// Write a file containing secrets, restricting it to owner-only (0600) on Unix.
@@ -1219,7 +1254,10 @@ pub async fn require_auth(State(auth): State<Auth>, req: Request, next: Next) ->
     // cross-site, so skip the Origin check for it.
     if via_token.is_none() && matches!(req.method().as_str(), "POST" | "PUT" | "DELETE" | "PATCH") {
         if let Some(reason) = cross_origin(req.headers()) {
-            return (StatusCode::FORBIDDEN, Json(json!({ "ok": false, "error": reason })))
+            return (
+                StatusCode::FORBIDDEN,
+                Json(json!({ "ok": false, "error": reason })),
+            )
                 .into_response();
         }
     }
@@ -1227,7 +1265,10 @@ pub async fn require_auth(State(auth): State<Auth>, req: Request, next: Next) ->
     let identity = via_token.or_else(|| auth.identity_from_headers(req.headers()));
     let Some(ident) = identity else {
         return if path.starts_with("/api/") {
-            (StatusCode::UNAUTHORIZED, Json(json!({ "ok": false, "error": "login required" })))
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({ "ok": false, "error": "login required" })),
+            )
                 .into_response()
         } else {
             Redirect::to("/login").into_response()
@@ -1237,7 +1278,10 @@ pub async fn require_auth(State(auth): State<Auth>, req: Request, next: Next) ->
     // Banned accounts are rejected even if they still hold a cookie/token.
     if auth.is_disabled(&ident.username) {
         return if path.starts_with("/api/") {
-            (StatusCode::FORBIDDEN, Json(json!({ "ok": false, "error": "account disabled" })))
+            (
+                StatusCode::FORBIDDEN,
+                Json(json!({ "ok": false, "error": "account disabled" })),
+            )
                 .into_response()
         } else {
             Redirect::to("/login").into_response()
@@ -1267,7 +1311,10 @@ pub async fn require_auth(State(auth): State<Auth>, req: Request, next: Next) ->
         || path.starts_with("/api/admin");
     if admin_area && ident.role != Role::Admin {
         return if path.starts_with("/api/") {
-            (StatusCode::FORBIDDEN, Json(json!({ "ok": false, "error": "admin only" })))
+            (
+                StatusCode::FORBIDDEN,
+                Json(json!({ "ok": false, "error": "admin only" })),
+            )
                 .into_response()
         } else {
             Redirect::to("/").into_response()
@@ -1281,9 +1328,8 @@ pub async fn require_auth(State(auth): State<Auth>, req: Request, next: Next) ->
     }
 
     let username = ident.username.clone();
-    let is_file = path.starts_with("/download/")
-        || path.starts_with("/stream/")
-        || path.starts_with("/dl/");
+    let is_file =
+        path.starts_with("/download/") || path.starts_with("/stream/") || path.starts_with("/dl/");
 
     let mut req = req;
     req.extensions_mut().insert(ident);
@@ -1306,7 +1352,12 @@ pub async fn require_auth(State(auth): State<Auth>, req: Request, next: Next) ->
 /// Best-effort client IP from proxy headers (set by Caddy/nginx in production).
 fn client_ip(headers: &HeaderMap) -> Option<String> {
     if let Some(v) = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok()) {
-        if let Some(first) = v.split(',').next().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        if let Some(first) = v
+            .split(',')
+            .next()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+        {
             return Some(first.to_string());
         }
     }
@@ -1334,9 +1385,15 @@ mod tests {
     #[test]
     fn b64_decodes_standard_and_unpadded() {
         // "user:mb_secret" — the form a download manager sends for user:pass@host.
-        assert_eq!(b64_decode("dXNlcjptYl9zZWNyZXQ=").unwrap(), b"user:mb_secret");
+        assert_eq!(
+            b64_decode("dXNlcjptYl9zZWNyZXQ=").unwrap(),
+            b"user:mb_secret"
+        );
         // Same payload without the '=' padding still decodes.
-        assert_eq!(b64_decode("dXNlcjptYl9zZWNyZXQ").unwrap(), b"user:mb_secret");
+        assert_eq!(
+            b64_decode("dXNlcjptYl9zZWNyZXQ").unwrap(),
+            b"user:mb_secret"
+        );
         assert_eq!(b64_decode("").unwrap(), b"");
     }
 
