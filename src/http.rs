@@ -144,8 +144,11 @@ pub fn router(engine: App, auth: Auth, direct: DirectManager, metrics: Metrics) 
         .route("/api/admin/cleanup", post(admin_cleanup))
         .route_layer(middleware::from_fn_with_state(auth, require_auth));
 
-    // Public: first-run setup + login + invite-only registration.
+    // Public: first-run setup + login + invite-only registration + PWA assets.
     let public = Router::new()
+        .route("/manifest.webmanifest", get(manifest))
+        .route("/sw.js", get(service_worker))
+        .route("/icon.svg", get(app_icon))
         .route("/setup", get(setup_page))
         .route("/api/setup", post(api_setup))
         .route("/login", get(login_page))
@@ -193,6 +196,32 @@ async fn security_headers(req: Request, next: Next) -> Response {
 
 async fn index() -> Html<&'static str> {
     Html(include_str!("web/index.html"))
+}
+
+// ---- PWA assets (public, so the app is installable from any page) ----
+
+async fn manifest() -> Response {
+    (
+        [(header::CONTENT_TYPE, "application/manifest+json")],
+        include_str!("web/manifest.webmanifest"),
+    )
+        .into_response()
+}
+
+async fn service_worker() -> Response {
+    (
+        [(header::CONTENT_TYPE, "application/javascript")],
+        include_str!("web/sw.js"),
+    )
+        .into_response()
+}
+
+async fn app_icon() -> Response {
+    (
+        [(header::CONTENT_TYPE, "image/svg+xml")],
+        include_str!("web/icon.svg"),
+    )
+        .into_response()
 }
 
 async fn login_page(State(auth): State<Auth>, headers: HeaderMap) -> Response {
