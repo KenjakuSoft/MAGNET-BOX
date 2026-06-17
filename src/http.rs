@@ -144,8 +144,10 @@ pub fn router(engine: App, auth: Auth, direct: DirectManager, metrics: Metrics) 
         .route("/api/admin/cleanup", post(admin_cleanup))
         .route_layer(middleware::from_fn_with_state(auth, require_auth));
 
-    // Public: login + invite-only registration.
+    // Public: first-run setup + login + invite-only registration.
     let public = Router::new()
+        .route("/setup", get(setup_page))
+        .route("/api/setup", post(api_setup))
         .route("/login", get(login_page))
         .route("/api/login", post(api_login))
         .route("/api/login/2fa", post(api_login_2fa))
@@ -194,10 +196,45 @@ async fn index() -> Html<&'static str> {
 }
 
 async fn login_page(State(auth): State<Auth>, headers: HeaderMap) -> Response {
+    if auth.needs_setup() {
+        return Redirect::to("/setup").into_response();
+    }
     if auth.identity_from_headers(&headers).is_some() {
         return Redirect::to("/").into_response();
     }
     Html(include_str!("web/login.html")).into_response()
+}
+
+// ---- first-run setup wizard ----
+
+async fn setup_page(State(auth): State<Auth>) -> Response {
+    if !auth.needs_setup() {
+        return Redirect::to("/login").into_response();
+    }
+    Html(include_str!("web/setup.html")).into_response()
+}
+
+#[derive(Deserialize)]
+struct SetupReq {
+    username: String,
+    password: String,
+    token: String,
+}
+
+async fn api_setup(State(auth): State<Auth>, Json(req): Json<SetupReq>) -> Response {
+    if !auth.needs_setup() {
+        return err(
+            StatusCode::CONFLICT,
+            "MagnetBox is already set up — sign in.",
+        );
+    }
+    if !auth.setup_token_ok(req.token.trim()) {
+        return err(StatusCode::FORBIDDEN, "Incorrect setup code.");
+    }
+    match auth.complete_setup(req.username.trim(), &req.password) {
+        Ok(()) => Json(json!({ "ok": true })).into_response(),
+        Err(e) => err(StatusCode::BAD_REQUEST, &format!("{e}")),
+    }
 }
 
 async fn admin_page() -> Html<&'static str> {

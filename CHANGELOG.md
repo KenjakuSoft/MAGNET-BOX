@@ -3,6 +3,14 @@
 All notable changes to MagnetBox are documented here. This project follows
 [Keep a Changelog](https://keepachangelog.com/) and [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **First-run setup wizard** — instead of a random admin password printed to a console, a fresh install opens a guided web page where you create your own account (username + password). Protected by a one-time setup code shown at startup, so a freshly-deployed box can't be claimed by anyone else first. The env var `MAGNETBOX_ADMIN_PASSWORD` still works for headless/automated provisioning.
+
+### Removed
+- The generated first-run password + `FIRST-LOGIN.txt` file (replaced by the setup wizard).
+
 ## [0.1.2] — 2026-06-16
 
 ### Added

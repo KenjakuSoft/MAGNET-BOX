@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MagnetBox · Welcome</title>
+<style>
+  :root {
+    --bg: #0d1014; --surface: #1a212b; --line: #2b3744; --text: #e6edf3;
+    --muted: #8b97a6; --accent: #41d6a3; --danger: #ff6b6b; --warn: #ffcf5c;
+    --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: grid; place-items: center;
+    background: radial-gradient(900px 500px at 50% -10%, #16202b 0%, var(--bg) 60%);
+    color: var(--text); font-family: var(--sans); padding: 24px;
+  }
+  .card {
+    width: min(420px, 94vw); background: var(--surface); border: 1px solid var(--line);
+    border-radius: 14px; padding: 28px 26px; box-shadow: 0 20px 50px -24px #000;
+  }
+  h1 { margin: 0 0 2px; font-size: 22px; }
+  h1 .box { color: var(--accent); }
+  .badge { display:inline-block; font:600 10px var(--mono); letter-spacing:.12em; text-transform:uppercase;
+    color:var(--accent); background:rgba(65,214,163,.1); border:1px solid #1f6b54; border-radius:999px; padding:3px 9px; margin-bottom:12px; }
+  p.sub { margin: 0 0 18px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 14px 0 6px; }
+  label .hint { color: var(--muted); opacity: .8; }
+  input {
+    width: 100%; background: #0c1117; color: var(--text); border: 1px solid var(--line);
+    border-radius: 9px; padding: 12px 13px; font: 14px var(--sans); outline: none;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  input:focus { border-color: #1f6b54; box-shadow: 0 0 0 3px rgba(65,214,163,.12); }
+  .row { display: flex; gap: 10px; }
+  .row > div { flex: 1; }
+  button {
+    width: 100%; margin-top: 22px; background: var(--accent); color: #06211a; border: 0;
+    border-radius: 9px; padding: 12px; font: 600 14px var(--sans); cursor: pointer;
+    transition: background .15s;
+  }
+  button:hover { background: #54e6b3; }
+  button:disabled { opacity: .6; cursor: default; }
+  .err { color: var(--danger); font-size: 13px; min-height: 18px; margin-top: 12px; }
+  .note { color: var(--warn); font-size: 12px; line-height: 1.5; background: rgba(255,207,92,.07);
+    border: 1px solid rgba(255,207,92,.25); border-radius: 8px; padding: 9px 11px; margin-top: 6px; }
+  .ok { text-align: center; }
+  .ok .check { font-size: 40px; }
+  .ok h2 { margin: 8px 0 4px; }
+  .ok p { color: var(--muted); font-size: 13px; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+  <form class="card" id="form">
+    <span class="badge">First-run setup</span>
+    <h1>Welcome to Magnet<span class="box">Box</span></h1>
+    <p class="sub">Create your admin account. This is the only step — you can turn on two-factor, set retention, and add users afterwards.</p>
+
+    <label for="code">Setup code <span class="hint">— shown in the terminal / server log where MagnetBox is running</span></label>
+    <input id="code" autocomplete="off" autofocus placeholder="paste the setup code" />
+
+    <label for="u">Choose a username</label>
+    <input id="u" autocomplete="username" value="admin" />
+
+    <div class="row">
+      <div>
+        <label for="p">Password</label>
+        <input id="p" type="password" autocomplete="new-password" placeholder="at least 8 characters" />
+      </div>
+      <div>
+        <label for="p2">Confirm</label>
+        <input id="p2" type="password" autocomplete="new-password" placeholder="repeat" />
+      </div>
+    </div>
+
+    <button id="btn" type="submit">Create account →</button>
+    <div class="err" id="err"></div>
+  </form>
+
+  <div class="card ok hidden" id="done">
+    <div class="check">✅</div>
+    <h2>You're all set</h2>
+    <p>Taking you to sign in…</p>
+  </div>
+
+<script>
+  const $ = s => document.querySelector(s);
+  $('#form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    $('#err').textContent = '';
+    const code = $('#code').value.trim(), u = $('#u').value.trim();
+    const p = $('#p').value, p2 = $('#p2').value;
+    if (!code) { $('#err').textContent = 'Enter the setup code from the terminal.'; return; }
+    if (p.length < 8) { $('#err').textContent = 'Password must be at least 8 characters.'; return; }
+    if (p !== p2) { $('#err').textContent = 'Passwords do not match.'; return; }
+    $('#btn').disabled = true;
+    try {
+      const r = await fetch('/api/setup', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ username: u, password: p, token: code })
+      });
+      const j = await r.json();
+      if (!r.ok || j.ok === false) throw new Error(j.error || 'setup failed');
+      $('#form').classList.add('hidden');
+      $('#done').classList.remove('hidden');
+      setTimeout(() => { location.href = '/login'; }, 1400);
+    } catch (err) {
+      $('#err').textContent = err.message;
+      $('#btn').disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

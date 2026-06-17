@@ -173,6 +173,9 @@ pub struct Auth {
     pending_2fa: Arc<Mutex<PendingTwoFactor>>,
     /// challenge token -> (username, expiry, attempts) for the 2FA login step.
     challenges: Arc<Mutex<ChallengeMap>>,
+    /// One-time setup code, present only until the first admin is created via
+    /// the web setup wizard. `None` once configured.
+    setup_token: Arc<Mutex<Option<String>>>,
 }
 
 impl Auth {
@@ -225,6 +228,7 @@ impl Auth {
             usage: Arc::new(Mutex::new(usage)),
             pending_2fa: Default::default(),
             challenges: Default::default(),
+            setup_token: Default::default(),
         };
 
         auth.init_admin()?;
@@ -271,38 +275,42 @@ impl Auth {
             return Ok(());
         }
 
+        // Fresh install: no admin yet. Instead of generating a throwaway
+        // password, enter setup mode — the user creates their own account in
+        // the browser, guarded by this one-time code (main.rs prints it).
         if self.users.lock().unwrap().is_empty() {
-            let password = random_password();
-            self.add_user(&username, &password, Role::Admin)?;
-
-            // Also save the credentials to a file so a non-technical user who
-            // closes the window can still find them.
-            let saved_to = self.write_first_login(&username, &password);
-
-            println!("\n  ╭─ First run: created your admin account ──────");
-            println!("  │  username: {username}");
-            println!("  │  password: {password}");
-            println!("  │  ↑ Use these to log in (then change the password).");
-            if let Some(p) = &saved_to {
-                println!("  │  Also saved to: {}", p.display());
-            }
-            println!("  │  Lost it? set MAGNETBOX_ADMIN_PASSWORD and restart.");
-            println!("  ╰──────────────────────────────────────────────\n");
+            *self.setup_token.lock().unwrap() = Some(gen_token());
         }
         Ok(())
     }
 
-    /// Write the first-run admin credentials next to the users file (0600 on
-    /// Unix) so they aren't lost if the console window is closed. Best-effort.
-    fn write_first_login(&self, username: &str, password: &str) -> Option<PathBuf> {
-        let dir = self.path.parent()?;
-        let file = dir.join("FIRST-LOGIN.txt");
-        let body = format!(
-            "MagnetBox — your admin login\n\n  username: {username}\n  password: {password}\n\n\
-             Open MagnetBox in your browser, go to /login, and sign in with these.\n\
-             Then change the password in Admin. You can delete this file afterwards.\n"
-        );
-        write_private(&file, body.as_bytes()).ok().map(|_| file)
+    /// True until the first admin account is created (fresh install).
+    pub fn needs_setup(&self) -> bool {
+        self.users.lock().unwrap().is_empty()
+    }
+
+    /// The one-time setup code (shown at startup), or `None` once configured.
+    pub fn setup_token(&self) -> Option<String> {
+        self.setup_token.lock().unwrap().clone()
+    }
+
+    /// True if `token` matches the active setup code (constant-time).
+    pub fn setup_token_ok(&self, token: &str) -> bool {
+        match &*self.setup_token.lock().unwrap() {
+            Some(t) => ct_eq(t.as_bytes(), token.as_bytes()),
+            None => false,
+        }
+    }
+
+    /// Create the first admin from the setup wizard, then close setup mode.
+    pub fn complete_setup(&self, username: &str, password: &str) -> Result<()> {
+        if !self.needs_setup() {
+            return Err(anyhow!("already set up"));
+        }
+        self.add_user(username, password, Role::Admin)?;
+        *self.setup_token.lock().unwrap() = None;
+        self.log_event(username, "completed first-run setup");
+        Ok(())
     }
 
     fn ensure_role(&self, username: &str, role: Role) -> Result<()> {
@@ -1210,15 +1218,6 @@ fn qr_svg(data: &str) -> Option<String> {
     )
 }
 
-fn random_password() -> String {
-    const CH: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
-    let mut b = [0u8; 16];
-    OsRng.fill_bytes(&mut b);
-    b.iter()
-        .map(|x| CH[(*x as usize) % CH.len()] as char)
-        .collect()
-}
-
 /// Write a file containing secrets, restricting it to owner-only (0600) on Unix.
 fn write_private(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
     std::fs::write(path, bytes)?;
@@ -1264,6 +1263,12 @@ pub async fn require_auth(State(auth): State<Auth>, req: Request, next: Next) ->
 
     let identity = via_token.or_else(|| auth.identity_from_headers(req.headers()));
     let Some(ident) = identity else {
+        // Send first-run visitors to the setup wizard, everyone else to login.
+        let dest = if auth.needs_setup() {
+            "/setup"
+        } else {
+            "/login"
+        };
         return if path.starts_with("/api/") {
             (
                 StatusCode::UNAUTHORIZED,
@@ -1271,7 +1276,7 @@ pub async fn require_auth(State(auth): State<Auth>, req: Request, next: Next) ->
             )
                 .into_response()
         } else {
-            Redirect::to("/login").into_response()
+            Redirect::to(dest).into_response()
         };
     };
 

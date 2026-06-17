@@ -71,9 +71,9 @@ No technical knowledge required — pick the path that fits you.
    - **Windows** → `magnetbox-windows-x64.exe`
    - **macOS (Apple Silicon)** → `magnetbox-macos-arm64`
    - **Linux** → `magnetbox-linux-x64`
-3. **Open it.** A small window appears and **your browser opens MagnetBox automatically**.
-4. Log in as **`admin`** with the password shown in that window (it's also saved to a
-   **`FIRST-LOGIN.txt`** file next to the program). Change it under **Admin** when you're in.
+3. **Open it.** A small window appears and **your browser opens automatically** to a quick setup page.
+4. **Create your account** — paste the one-time setup code shown in that window, pick a username and
+   password, and you're in. (Turn on two-factor auth and add users afterwards, any time.)
 
 That's the whole thing — no commands, no Rust, no build.
 

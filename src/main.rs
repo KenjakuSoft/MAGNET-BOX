@@ -93,17 +93,31 @@ async fn main() -> anyhow::Result<()> {
         .with_context(|| format!("could not bind {addr} (is the port in use?)"))?;
 
     let url = format!("http://{addr}");
+    // First run: send people to the guided setup wizard instead of a login form.
+    let landing = if auth.needs_setup() {
+        "/setup"
+    } else {
+        "/login"
+    };
     println!();
     println!("  ┌─ MagnetBox ───────────────────────────────");
-    println!("  │  Open this in your browser:");
-    println!("  │     {url}/login");
+    if auth.needs_setup() {
+        println!("  │  Welcome! Create your account in the browser:");
+        println!("  │     {url}/setup");
+        if let Some(code) = auth.setup_token() {
+            println!("  │  Setup code (paste it once): {code}");
+        }
+    } else {
+        println!("  │  Open this in your browser:");
+        println!("  │     {url}/login");
+    }
     println!("  │  downloads  {}", download_dir.display());
     println!("  │  secure cookies: {secure_cookie}");
     println!("  └────────────────────────────────────────────");
     println!("  (keep this window open — closing it stops MagnetBox)");
     println!();
 
-    maybe_open_browser(ip, &format!("{url}/login"));
+    maybe_open_browser(ip, &format!("{url}{landing}"));
 
     axum::serve(listener, http::router(app, auth, direct, host_metrics))
         .await
