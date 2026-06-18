@@ -117,8 +117,9 @@ Everything is configured with environment variables — no config file to edit.
 | `MAGNETBOX_DIR` | `./downloads` | Where downloaded files are stored |
 | `MAGNETBOX_DATA` | `./magnetbox-data` | Where accounts/settings live |
 | `MAGNETBOX_HTTPS` | `0` | `1` marks session cookies `Secure` (set when behind HTTPS) |
-| `MAGNETBOX_ADMIN_USER` | `admin` | First-run admin username |
-| `MAGNETBOX_ADMIN_PASSWORD` | *(generated)* | First-run admin password (≥8 chars). Set it to reset a lost password. |
+| `MAGNETBOX_ADMIN_USER` | `admin` | Pre-fills the username in the setup wizard |
+| `MAGNETBOX_ADMIN_PASSWORD` | *(setup wizard)* | Set it to create/reset the admin headlessly and skip the wizard (≥8 chars) |
+| `MAGNETBOX_NOTIFY_URL` | *(off)* | Webhook pinged when a torrent/download finishes — Discord, ntfy, or any endpoint |
 | `RUST_LOG` | `info` | Log verbosity |
 
 ---

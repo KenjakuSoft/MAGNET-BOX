@@ -210,7 +210,8 @@ cargo build --release</code></pre>
             <tr><td><code>MAGNETBOX_DATA</code></td><td>./magnetbox-data</td><td>Where accounts/settings live</td></tr>
             <tr><td><code>MAGNETBOX_HTTPS</code></td><td>0</td><td><code>1</code> marks session cookies <code>Secure</code> (set when behind HTTPS)</td></tr>
             <tr><td><code>MAGNETBOX_ADMIN_USER</code></td><td>admin</td><td>First-run admin username</td></tr>
-            <tr><td><code>MAGNETBOX_ADMIN_PASSWORD</code></td><td><i>generated</i></td><td>First-run admin password (≥8 chars). Set it to reset a lost admin password.</td></tr>
+            <tr><td><code>MAGNETBOX_ADMIN_PASSWORD</code></td><td><i>setup wizard</i></td><td>Set it to create/reset the admin headlessly and skip the wizard (≥8 chars).</td></tr>
+            <tr><td><code>MAGNETBOX_NOTIFY_URL</code></td><td><i>off</i></td><td>Webhook pinged when a torrent/download finishes — Discord, ntfy, or any endpoint.</td></tr>
             <tr><td><code>RUST_LOG</code></td><td>info</td><td>Log verbosity</td></tr>
           </tbody>
         </table>

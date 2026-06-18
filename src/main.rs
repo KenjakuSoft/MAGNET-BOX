@@ -11,6 +11,7 @@ mod downloads;
 mod engine;
 mod http;
 mod metrics;
+mod notify;
 
 use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
@@ -75,6 +76,14 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
         });
+    }
+
+    // Completion notifications (optional): ping a webhook when items finish.
+    if let Ok(notify_url) = std::env::var("MAGNETBOX_NOTIFY_URL") {
+        let notify_url = notify_url.trim().to_string();
+        if !notify_url.is_empty() {
+            tokio::spawn(notifier_loop(notify_url, app.clone(), direct.clone()));
+        }
     }
 
     let port: u16 = std::env::var("MAGNETBOX_PORT")
@@ -159,6 +168,40 @@ fn open_url(url: &str) -> std::io::Result<()> {
         c
     };
     cmd.spawn().map(|_| ())
+}
+
+/// Watch for newly-finished torrents and downloads and POST a webhook message.
+/// Seeds the "already done" set on the first pass, so it never spams on startup.
+async fn notifier_loop(url: String, app: engine::App, direct: downloads::DirectManager) {
+    use std::collections::HashSet;
+    let client = reqwest::Client::new();
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut first = true;
+    loop {
+        let mut done: Vec<(String, String)> = Vec::new();
+        for t in app.list() {
+            if t.finished {
+                done.push((format!("t:{}", t.id), t.name));
+            }
+        }
+        for d in direct.list() {
+            if d.status == "done" {
+                done.push((format!("d:{}", d.id), d.filename));
+            }
+        }
+        for (key, name) in done {
+            if seen.insert(key) && !first {
+                notify::send(
+                    &client,
+                    &url,
+                    &format!("✅ \"{name}\" finished downloading."),
+                )
+                .await;
+            }
+        }
+        first = false;
+        tokio::time::sleep(std::time::Duration::from_secs(15)).await;
+    }
 }
 
 fn data_dir() -> PathBuf {
