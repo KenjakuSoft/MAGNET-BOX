@@ -850,6 +850,20 @@ loadAccount();
 refresh();
 setInterval(refresh, 1200);
 
+// Quick-add from the bookmarklet: opening /?add=<magnet|url> adds it (cookie-authed).
+(function () {
+  const add = new URLSearchParams(location.search).get('add');
+  if (!add) return;
+  history.replaceState(null, '', location.pathname);
+  fetch('/api/add', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ source: add })
+  }).then(r => r.json()).then(j => {
+    if (j.ok === false) { toast(j.error || 'Add failed', true); }
+    else { showTab(j.kind === 'link' ? 'downloads' : 'torrents'); toast('Added to MagnetBox ✓'); refresh(); }
+  }).catch(() => toast('Add failed', true));
+})();
+
 // Register the service worker so MagnetBox is installable as a standalone app.
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));

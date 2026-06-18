@@ -124,6 +124,13 @@
     </div>
 
     <div class="card">
+      <h2>Quick-add bookmarklet</h2>
+      <p class="desc">Drag this button to your browser's bookmarks bar. Then on any page with a magnet link, click it to send the magnet straight to MagnetBox — no copy-pasting.</p>
+      <p><a class="btn primary" id="bookmarklet" href="#" onclick="return false" draggable="true">📥 Add to MagnetBox</a></p>
+      <p class="desc">No magnet found on the page? It'll prompt you to paste one. The button works from any site and opens MagnetBox to add the link.</p>
+    </div>
+
+    <div class="card">
       <h2>API quickstart</h2>
       <p class="desc">All endpoints accept the bearer token instead of a login cookie. Full reference: <a href="/docs" style="color:var(--accent)">/docs</a> · <a href="/api/openapi.json" style="color:var(--accent)">openapi.json</a></p>
       <pre id="examples"># list torrents
@@ -224,6 +231,14 @@ curl -H "Authorization: Bearer YOUR_TOKEN" -H "content-type: application/json" \
     } catch (e) { toast(e.message, true); }
   });
   init();
+
+  // Build the quick-add bookmarklet pointing at this box's address.
+  (function () {
+    const origin = location.origin;
+    const code = `javascript:(function(){var m=(location.href.match(/magnet:\\?[^"'\\s<>]+/)||document.body.innerHTML.match(/magnet:\\?[^"'\\s<>]+/)||[])[0]||prompt('Magnet or .torrent URL to send to MagnetBox:');if(m)window.open('${origin}/?add='+encodeURIComponent(m),'_blank');})();`;
+    const el = $('#bookmarklet');
+    if (el) el.setAttribute('href', code);
+  })();
 </script>
 </body>
 </html>

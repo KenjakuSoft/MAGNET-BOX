@@ -10,6 +10,7 @@ All notable changes to MagnetBox are documented here. This project follows
 - **Installable app (PWA)** — MagnetBox now ships a web manifest, icon and service worker, so you can "Add to Home Screen" / install it and run it in a standalone window like a native app. Mobile status-bar theming and `apple-touch-icon` included.
 - **Light / dark theme** — a toggle in the header (☀️/🌙), remembered per device and applied before first paint (no flash). Defaults to your system preference.
 - **Completion notifications** — set `MAGNETBOX_NOTIFY_URL` to a webhook and get pinged the moment a torrent or download finishes. Works with **Discord** webhooks, **ntfy**, and generic endpoints. No more babysitting the dashboard.
+- **Quick-add bookmarklet** — drag the button from the Account page to your bookmarks bar; one click on any torrent page sends the magnet straight to your box (via `/?add=…`). No copy-pasting.
 - **Installable app (PWA)** — MagnetBox now ships a web app manifest, icon, and service worker, so you can "Install" / "Add to Home Screen" and run it in a standalone window like a native app (with a matching theme color). The dashboard is mobile-responsive.
 
 ### Removed
