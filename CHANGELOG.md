@@ -7,6 +7,8 @@ All notable changes to MagnetBox are documented here. This project follows
 
 ### Added
 - **First-run setup wizard** — instead of a random admin password printed to a console, a fresh install opens a guided web page where you create your own account (username + password). Protected by a one-time setup code shown at startup, so a freshly-deployed box can't be claimed by anyone else first. The env var `MAGNETBOX_ADMIN_PASSWORD` still works for headless/automated provisioning.
+- **Installable app (PWA)** — MagnetBox now ships a web manifest, icon and service worker, so you can "Add to Home Screen" / install it and run it in a standalone window like a native app. Mobile status-bar theming and `apple-touch-icon` included.
+- **Light / dark theme** — a toggle in the header (☀️/🌙), remembered per device and applied before first paint (no flash). Defaults to your system preference.
 - **Installable app (PWA)** — MagnetBox now ships a web app manifest, icon, and service worker, so you can "Install" / "Add to Home Screen" and run it in a standalone window like a native app (with a matching theme color). The dashboard is mobile-responsive.
 
 ### Removed
