@@ -11,6 +11,7 @@ All notable changes to MagnetBox are documented here. This project follows
 - **Light / dark theme** — a toggle in the header (☀️/🌙), remembered per device and applied before first paint (no flash). Defaults to your system preference.
 - **Completion notifications** — set `MAGNETBOX_NOTIFY_URL` to a webhook and get pinged the moment a torrent or download finishes. Works with **Discord** webhooks, **ntfy**, and generic endpoints. No more babysitting the dashboard.
 - **Quick-add bookmarklet** — drag the button from the Account page to your bookmarks bar; one click on any torrent page sends the magnet straight to your box (via `/?add=…`). No copy-pasting.
+- **RSS auto-download** — subscribe to torrent RSS feeds in **Admin → RSS** with an optional title keyword filter; MagnetBox checks them every 10 minutes and auto-grabs new matching items (it seeds on first fetch so it never floods you with the backlog). Dependency-free parser handles magnet links and `.torrent` enclosures.
 - **Installable app (PWA)** — MagnetBox now ships a web app manifest, icon, and service worker, so you can "Install" / "Add to Home Screen" and run it in a standalone window like a native app (with a matching theme color). The dashboard is mobile-responsive.
 
 ### Removed

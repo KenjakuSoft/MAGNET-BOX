@@ -12,6 +12,7 @@ mod engine;
 mod http;
 mod metrics;
 mod notify;
+mod rss;
 
 use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
@@ -43,6 +44,7 @@ async fn main() -> anyhow::Result<()> {
 
     let direct = downloads::DirectManager::new(download_dir.join("_links"));
     let host_metrics = metrics::Metrics::start(download_dir.clone());
+    let rss = rss::RssManager::load(data_dir().join("feeds.json"));
 
     // Persist per-user usage periodically (cumulative bandwidth survives restarts).
     {
@@ -86,6 +88,9 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    // RSS auto-download: poll subscribed feeds and grab new matching torrents.
+    tokio::spawn(rss_loop(rss.clone(), app.clone()));
+
     let port: u16 = std::env::var("MAGNETBOX_PORT")
         .ok()
         .and_then(|s| s.parse().ok())
@@ -128,10 +133,42 @@ async fn main() -> anyhow::Result<()> {
 
     maybe_open_browser(ip, &format!("{url}{landing}"));
 
-    axum::serve(listener, http::router(app, auth, direct, host_metrics))
+    axum::serve(listener, http::router(app, auth, direct, host_metrics, rss))
         .await
         .context("http server error")?;
     Ok(())
+}
+
+/// Poll subscribed RSS feeds and auto-add new matching torrents. The first fetch
+/// of each feed only seeds (so subscribing doesn't grab the whole backlog).
+async fn rss_loop(rss: rss::RssManager, app: engine::App) {
+    use librqbit::AddTorrent;
+    let client = reqwest::Client::builder()
+        .user_agent("MagnetBox/0.1")
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .unwrap_or_default();
+    loop {
+        for feed in rss.list() {
+            if !feed.enabled
+                || !(feed.url.starts_with("http://") || feed.url.starts_with("https://"))
+            {
+                continue;
+            }
+            let xml = match client.get(&feed.url).send().await {
+                Ok(r) => r.text().await.unwrap_or_default(),
+                Err(e) => {
+                    tracing::warn!(feed = %feed.url, error = %e, "rss fetch failed");
+                    continue;
+                }
+            };
+            for link in rss.new_links(feed.id, &feed.filter, feed.seeded, &xml) {
+                tracing::info!("rss: auto-adding from {}", feed.url);
+                app.spawn_add(AddTorrent::from_url(link), false, false);
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(600)).await;
+    }
 }
 
 /// Open the default browser at `url` when launched interactively on localhost

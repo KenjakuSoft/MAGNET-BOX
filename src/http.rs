@@ -26,6 +26,7 @@ use crate::auth::{require_auth, token_from_headers, Auth, Identity, LoginOutcome
 use crate::downloads::DirectManager;
 use crate::engine::App;
 use crate::metrics::Metrics;
+use crate::rss::RssManager;
 
 /// Combined state so handlers can extract either the torrent engine or auth
 /// (via `FromRef`), while existing `State<App>` handlers keep working.
@@ -35,6 +36,7 @@ pub struct AppState {
     auth: Auth,
     direct: DirectManager,
     metrics: Metrics,
+    rss: RssManager,
     started: Instant,
     /// Whether `ffmpeg` is on PATH — enables on-the-fly transcoding so the
     /// in-browser player can play formats the browser can't decode natively.
@@ -58,8 +60,19 @@ impl FromRef<AppState> for DirectManager {
         s.direct.clone()
     }
 }
+impl FromRef<AppState> for RssManager {
+    fn from_ref(s: &AppState) -> RssManager {
+        s.rss.clone()
+    }
+}
 
-pub fn router(engine: App, auth: Auth, direct: DirectManager, metrics: Metrics) -> Router {
+pub fn router(
+    engine: App,
+    auth: Auth,
+    direct: DirectManager,
+    metrics: Metrics,
+    rss: RssManager,
+) -> Router {
     let ffmpeg = ffmpeg_available();
     if ffmpeg {
         tracing::info!("ffmpeg detected — in-browser transcoding enabled for unsupported formats");
@@ -71,6 +84,7 @@ pub fn router(engine: App, auth: Auth, direct: DirectManager, metrics: Metrics) 
         auth: auth.clone(),
         direct,
         metrics,
+        rss,
         started: Instant::now(),
         ffmpeg,
         transcodes: Arc::new(Mutex::new(HashMap::new())),
@@ -142,6 +156,8 @@ pub fn router(engine: App, auth: Auth, direct: DirectManager, metrics: Metrics) 
             post(admin_clear_completed),
         )
         .route("/api/admin/cleanup", post(admin_cleanup))
+        .route("/api/admin/rss", get(rss_list).post(rss_add))
+        .route("/api/admin/rss/:id/delete", post(rss_delete))
         .route_layer(middleware::from_fn_with_state(auth, require_auth));
 
     // Public: first-run setup + login + invite-only registration + PWA assets.
@@ -222,6 +238,36 @@ async fn app_icon() -> Response {
         include_str!("web/icon.svg"),
     )
         .into_response()
+}
+
+// ---- RSS auto-download (admin only) ----
+
+async fn rss_list(State(rss): State<RssManager>) -> Json<serde_json::Value> {
+    Json(json!({ "feeds": rss.list() }))
+}
+
+#[derive(Deserialize)]
+struct RssAddReq {
+    url: String,
+    #[serde(default)]
+    filter: String,
+}
+
+async fn rss_add(State(rss): State<RssManager>, Json(req): Json<RssAddReq>) -> Response {
+    let url = req.url.trim();
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return err(
+            StatusCode::BAD_REQUEST,
+            "feed URL must start with http:// or https://",
+        );
+    }
+    let id = rss.add(url.to_string(), req.filter);
+    Json(json!({ "ok": true, "id": id })).into_response()
+}
+
+async fn rss_delete(State(rss): State<RssManager>, Path(id): Path<usize>) -> Response {
+    rss.remove(id);
+    Json(json!({ "ok": true })).into_response()
 }
 
 async fn login_page(State(auth): State<Auth>, headers: HeaderMap) -> Response {

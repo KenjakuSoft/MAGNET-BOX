@@ -113,6 +113,7 @@
         <button class="navbtn" data-sec="sessions">🔐 Sessions</button>
         <button class="navbtn" data-sec="activity">📜 Activity</button>
         <button class="navbtn" data-sec="access">🚦 Access</button>
+        <button class="navbtn" data-sec="rss">📡 RSS</button>
         <button class="navbtn" data-sec="settings">⚙ Settings</button>
       </nav>
       <a class="back" href="/">← back to app</a>
@@ -195,6 +196,20 @@
           </div>
         </div>
         <div class="panel"><table><thead><tr><th>Code</th><th>Uses</th><th>Expires</th><th>Note</th><th>Status</th><th class="right"></th></tr></thead><tbody id="inv-rows"></tbody></table></div>
+      </section>
+
+      <section data-sec="rss" hidden>
+        <h1>RSS auto-download</h1>
+        <p class="lead">Subscribe to a torrent RSS feed and MagnetBox grabs new matching items automatically. It skips the existing backlog and grabs what appears <i>after</i> you subscribe. Feeds are checked every 10 minutes.</p>
+        <div class="panel">
+          <h2>Subscribe to a feed</h2>
+          <div class="row">
+            <div style="flex:1;min-width:220px"><div class="k mono" style="margin-bottom:6px">Feed URL</div><input id="rss-url" placeholder="https://tracker.example/rss.xml" style="width:100%" /></div>
+            <div style="flex:1;min-width:160px"><div class="k mono" style="margin-bottom:6px">Title contains (optional)</div><input id="rss-filter" placeholder="e.g. 1080p" style="width:100%" /></div>
+            <button class="btn primary" id="mkFeed" style="align-self:flex-end">Subscribe</button>
+          </div>
+        </div>
+        <div class="panel"><table><thead><tr><th>Feed</th><th>Filter</th><th>Status</th><th class="right"></th></tr></thead><tbody id="rss-rows"></tbody></table></div>
       </section>
 
       <section data-sec="access" hidden>
@@ -292,6 +307,7 @@
     else if (sec === 'sessions') loadSessions();
     else if (sec === 'activity') loadActivity();
     else if (sec === 'access') loadAccess();
+    else if (sec === 'rss') loadRss();
     else if (sec === 'settings') loadSettings();
   }
 
@@ -421,6 +437,30 @@
       const r = await fetch('/api/admin/invites', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ max_uses: parseInt($('#iv-uses').value) || 0, expires_days: parseInt($('#iv-days').value) || 0, note: $('#iv-note').value }) });
       const j = await r.json(); if (!r.ok || j.ok === false) throw new Error(j.error || 'failed');
       $('#iv-note').value = ''; toast('Invite created: ' + j.code); loadInvites();
+    } catch (e) { toast(e.message, true); }
+  });
+
+  async function loadRss() {
+    const j = await (await fetch('/api/admin/rss')).json();
+    const list = j.feeds || [];
+    $('#rss-rows').innerHTML = list.length ? list.map(f => {
+      const st = f.seeded ? '<span class="badge done">active</span>' : '<span class="badge">pending</span>';
+      return `<tr><td class="mono" style="word-break:break-all">${esc(f.url)}</td><td>${f.filter ? esc(f.filter) : '<span class="mono">any</span>'}</td><td>${st}</td>
+        <td class="right"><button class="btn small danger" onclick="feedDel(${f.id})">Remove</button></td></tr>`;
+    }).join('') : '<tr><td colspan="4" class="empty">No feeds yet. Subscribe to one above.</td></tr>';
+  }
+  async function feedDel(id) {
+    const c = await modal({ title: 'Remove feed', message: 'Stop auto-downloading from this feed?', buttons: [{ label: 'Cancel', value: null, kind: 'ghost' }, { label: 'Remove', value: 'y', kind: 'danger' }] });
+    if (!c) return;
+    try { await postJson(`/api/admin/rss/${id}/delete`); toast('Feed removed'); loadRss(); } catch (e) { toast(e.message, true); }
+  }
+  $('#mkFeed').addEventListener('click', async () => {
+    const url = $('#rss-url').value.trim();
+    if (!url) { toast('Enter a feed URL', true); return; }
+    try {
+      const r = await fetch('/api/admin/rss', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url, filter: $('#rss-filter').value.trim() }) });
+      const j = await r.json(); if (!r.ok || j.ok === false) throw new Error(j.error || 'failed');
+      $('#rss-url').value = ''; $('#rss-filter').value = ''; toast('Subscribed — new matching items will download automatically.'); loadRss();
     } catch (e) { toast(e.message, true); }
   });
 
