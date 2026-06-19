@@ -109,6 +109,9 @@
         <h4>Using MagnetBox</h4>
         <a href="#adding">Adding content</a>
         <a href="#streaming">Streaming &amp; files</a>
+        <a href="#playback">Play any format</a>
+        <a href="#rss">RSS auto-download</a>
+        <a href="#notify">Notifications</a>
         <a href="#users">Users &amp; invites</a>
         <a href="#admin">Admin console</a>
         <a href="#retention">Retention</a>
@@ -147,10 +150,15 @@
           <li><b>Add anything</b> — paste a magnet, a <code>.torrent</code> URL, or any <code>http(s)</code> link; the type is auto-detected.</li>
           <li><b>Download to your server</b> at full speed, then grab a private direct link or play it in-app.</li>
           <li><b>Stream while downloading</b> — the built-in player seeks before the file finishes and loads subtitle tracks from the torrent.</li>
+          <li><b>Play any format</b> — with <code>ffmpeg</code> installed, MKV / H.265 / AVI and more transcode on the fly to play in any browser (otherwise a one-tap link opens VLC / Infuse).</li>
+          <li><b>RSS auto-download</b> — subscribe to feeds in <b>Admin → RSS</b> with an optional keyword filter; new matching torrents grab automatically.</li>
+          <li><b>Completion notifications</b> — a webhook ping (Discord, ntfy, or any endpoint) the moment a download finishes.</li>
+          <li><b>Quick-add bookmarklet</b> — one click on any torrent page sends the magnet straight to your box.</li>
           <li><b>Pick files</b> inside a torrent, pause/resume/delete, batch-add, and drag-and-drop <code>.torrent</code> files.</li>
           <li><b>Multi-user</b> with invite-only registration, roles, and per-user limits.</li>
           <li><b>Admin console</b> — live CPU/RAM/disk, users, sessions, audit log, bandwidth, bulk controls.</li>
           <li><b>Retention</b> — optionally auto-delete content after N days to save space.</li>
+          <li><b>Installable app</b> — add MagnetBox to your phone's home screen (PWA), with a light / dark theme.</li>
           <li><b>API</b> — OpenAPI 3.1 spec + per-user tokens for scripts and media tools.</li>
         </ul>
       </section>
@@ -236,6 +244,40 @@ cargo build --release</code></pre>
           <li><b>⧉ Copy link</b> — copies a direct link with your access key embedded, ready to paste into a download manager (JDownloader, IDM) or player (VLC, Infuse) — see <a href="#api">External downloaders</a>.</li>
           <li><b>Checkboxes</b> — choose exactly which files download; toggle anytime.</li>
         </ul>
+        <p>Each torrent's row shows live <b>speed</b>, <b>peer count</b> and <b>ETA</b>, so you can tell at a glance whether it's downloading well or stuck.</p>
+      </section>
+
+      <section id="playback">
+        <h2>Play any format (ffmpeg)</h2>
+        <p>Browsers can only natively play a few codecs (H.264/AAC, VP9). For anything else — <b>MKV, H.265/HEVC, AVI</b> — install <a href="https://ffmpeg.org/" target="_blank" rel="noopener">ffmpeg</a> on the server and MagnetBox transcodes on the fly to a browser-friendly stream, even while the file is still downloading.</p>
+        <pre><code><span class="cmd"># Linux server</span>
+sudo apt install -y ffmpeg
+<span class="cmd"># Windows</span>
+winget install ffmpeg</code></pre>
+        <p>Restart MagnetBox; the startup log confirms <code>ffmpeg detected — in-browser transcoding enabled</code>. Without ffmpeg, the player offers a one-tap <b>⧉ Copy link</b> to open the file in VLC / Infuse instead.</p>
+      </section>
+
+      <section id="rss">
+        <h2>RSS auto-download</h2>
+        <p>Subscribe to a torrent RSS feed and MagnetBox grabs new matching items automatically — set-and-forget.</p>
+        <ol>
+          <li>Go to <b>Admin → 📡 RSS</b>.</li>
+          <li>Paste a <b>feed URL</b> and (optionally) a <b>keyword</b> the title must contain — e.g. <code>1080p</code>.</li>
+          <li>Click <b>Subscribe</b>.</li>
+        </ol>
+        <p>Feeds are checked every 10 minutes. The first check only <i>seeds</i> the feed (so subscribing never floods you with the existing backlog) — it then grabs new matching items as they appear.</p>
+      </section>
+
+      <section id="notify">
+        <h2>Completion notifications</h2>
+        <p>Get pinged the moment a torrent or download finishes. Set the <code>MAGNETBOX_NOTIFY_URL</code> environment variable to a webhook:</p>
+        <ul>
+          <li><b>Discord</b> — a channel webhook URL (it receives a JSON message).</li>
+          <li><b>ntfy</b> — your topic URL, e.g. <code>https://ntfy.sh/my-topic</code> (push to your phone).</li>
+          <li><b>Anything else</b> — a generic endpoint receives the plain-text message.</li>
+        </ul>
+        <pre><code><span class="cmd"># example</span>
+MAGNETBOX_NOTIFY_URL=https://ntfy.sh/my-magnetbox</code></pre>
       </section>
 
       <section id="users">

@@ -46,6 +46,7 @@ BitTorrent engine, so there's no external torrent client to install.
 |---|---|
 | 🔗 **Add anything** | Magnet, `.torrent` URL/upload, or a plain http(s) link — auto-detected (torrent engine vs. direct-link downloader). |
 | ▶️ **Stream while downloading** | In-app video/audio player seeks before the file finishes; subtitles auto-loaded from the torrent's `.srt` (→ WebVTT). |
+| 🎬 **Play any format** | With **ffmpeg** installed, MKV / H.265 / AVI and more transcode on the fly to play right in the browser (even mid-download); otherwise a one-tap external-player link (VLC, Infuse, JDownloader). |
 | ✅ **Pick what to download** | Per-file checkboxes (live), select all/none, and an **add-paused** option to choose files *before* anything downloads. |
 | 🔐 **Login + multi-user** | argon2 passwords, server-side sessions, roles, and a full **admin console** at `/admin`. |
 | 🎟 **Invite-only registration** | Closed sign-up — invite codes (single/multi-use, optional expiry) + an open/close toggle and **maintenance mode**. |
@@ -56,6 +57,12 @@ BitTorrent engine, so there's no external torrent client to install.
 | ⚙️ **Settings** | Change password, per-browser defaults, and an admin-only **global speed limit** (persisted). |
 | 🔑 **API + tokens** | Per-user bearer token + **OpenAPI 3.1** spec at `/api/openapi.json` and a reference page at `/docs`. |
 | ⏸ **Full control** | Pause / resume / delete (optionally erasing files), drag-and-drop `.torrent`, batch add, live stats, name filter. |
+| 🚀 **Guided first-run setup** | A setup wizard to create your own account in the browser — no random console passwords to copy. |
+| 📡 **RSS auto-download** | Subscribe to feeds (with an optional keyword filter) and new matching torrents grab automatically. |
+| 🔔 **Completion notifications** | A webhook ping (**Discord**, **ntfy**, or any endpoint) the moment a torrent or download finishes. |
+| 📥 **Quick-add bookmarklet** | Drag it to your bookmarks bar; one click on any torrent page sends the magnet to your box. |
+| 📱 **Installable app + theme** | Add to Home Screen and run in a standalone window (PWA), with a **light / dark** toggle. |
+| 📊 **Download health** | Live **peer count** + **ETA** per torrent, so you can see what's downloading fast vs. stuck. |
 | 🦀 **Single binary** | Embedded web UI, binds `127.0.0.1` by default. No database server, no container stack required. |
 
 ---
