@@ -1,4 +1,4 @@
-//! MagnetBox — a personal, self-hosted "debrid"-style gateway.
+//! MagnetBox — a personal, self-hosted magnet/torrent download & streaming gateway.
 //!
 //! Paste a magnet or .torrent, the embedded BitTorrent engine (librqbit)
 //! downloads it, and you get direct HTTP links to download or **stream** each
