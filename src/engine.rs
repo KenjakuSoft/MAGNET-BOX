@@ -83,6 +83,7 @@ pub struct TorrentView {
     pub progress_bytes: u64,
     pub total_bytes: u64,
     pub download_mbps: f64,
+    pub peers: u32,
     pub files: Vec<FileView>,
 }
 
@@ -423,6 +424,11 @@ fn view(h: &ManagedTorrentHandle) -> TorrentView {
             .as_ref()
             .map(|l| l.download_speed.mbps)
             .unwrap_or(0.0),
+        peers: stats
+            .live
+            .as_ref()
+            .map(|l| l.snapshot.peer_stats.live as u32)
+            .unwrap_or(0),
         files,
     }
 }
