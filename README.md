@@ -17,7 +17,6 @@ One Rust binary. Your server, your data.
 [![Single binary](https://img.shields.io/badge/deploy-single_binary-8b5cf6?style=flat-square)](#install)
 <br>
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-Support_development-FF5E5B?style=flat-square&logo=ko-fi&logoColor=white)](https://ko-fi.com/lidaf)
-[![PayPal](https://img.shields.io/badge/PayPal-Donate-00457C?style=flat-square&logo=paypal&logoColor=white)](https://www.paypal.com/donate/?business=JG7J2JMQ8DP38)
 
 **[Features](#-features) · [Install](#install) · [Configuration](#-configuration) · [HTTP API](#-http-api) · [Security](#-security-posture) · [Deploy](#-deploy-to-a-vps) · [Donate](#-support)**
 
@@ -299,7 +298,6 @@ MagnetBox is free and open. Donations fund maintenance, security fixes, and new
 features — thank you. 🙏
 
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-Support_development-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/lidaf)
-[![PayPal](https://img.shields.io/badge/PayPal-Donate-00457C?style=for-the-badge&logo=paypal&logoColor=white)](https://www.paypal.com/donate/?business=JG7J2JMQ8DP38)
 
 ### Crypto
 
