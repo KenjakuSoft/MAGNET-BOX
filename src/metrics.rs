@@ -57,6 +57,14 @@ impl Metrics {
                         h.mem_total = sys.total_memory();
                         h.disk_total = disk_total;
                         h.disk_used = disk_total.saturating_sub(disk_avail);
+                    } else {
+                        // Lock was poisoned, recover by taking the poisoned data
+                        let mut h = handle.poisoned().into_inner();
+                        h.cpu = cpu;
+                        h.mem_used = sys.used_memory();
+                        h.mem_total = sys.total_memory();
+                        h.disk_total = disk_total;
+                        h.disk_used = disk_total.saturating_sub(disk_avail);
                     }
                     std::thread::sleep(Duration::from_secs(2));
                 }
@@ -67,7 +75,10 @@ impl Metrics {
     }
 
     pub fn snapshot(&self) -> Host {
-        self.inner.lock().map(|h| h.clone()).unwrap_or_default()
+        match self.inner.lock() {
+            Ok(h) => h.clone(),
+            Err(e) => e.into_inner().clone(),
+        }
     }
 }
 

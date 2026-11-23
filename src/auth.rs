@@ -14,7 +14,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use anyhow::{anyhow, Context, Result};
 use argon2::password_hash::rand_core::{OsRng, RngCore};
 use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
-use argon2::Argon2;
+use argon2::{Algorithm, Argon2, Params, Version};
 use axum::{
     extract::{Request, State},
     http::{header, HeaderMap, StatusCode},
@@ -236,14 +236,21 @@ impl Auth {
     }
 
     fn save_invites(&self) {
-        let list: Vec<Invite> = self.invites.lock().unwrap().values().cloned().collect();
+        let list: Vec<Invite> = match self.invites.lock() {
+            Ok(m) => m.values().cloned().collect(),
+            Err(e) => e.into_inner().values().cloned().collect(),
+        };
         if let Ok(bytes) = serde_json::to_vec_pretty(&list) {
             let _ = write_private(&self.invites_path, &bytes);
         }
     }
 
     fn save_config(&self) {
-        if let Ok(bytes) = serde_json::to_vec_pretty(&*self.config.lock().unwrap()) {
+        let config = match self.config.lock() {
+            Ok(m) => m.clone(),
+            Err(e) => e.into_inner().clone(),
+        };
+        if let Ok(bytes) = serde_json::to_vec_pretty(&config) {
             let _ = write_private(&self.config_path, &bytes);
         }
     }
@@ -261,7 +268,10 @@ impl Auth {
         let env_pw = std::env::var("MAGNETBOX_ADMIN_PASSWORD")
             .ok()
             .filter(|p| p.len() >= MIN_PASSWORD_LEN);
-        let exists = self.users.lock().unwrap().contains_key(&username);
+        let exists = match self.users.lock() {
+            Ok(m) => m.contains_key(&username),
+            Err(e) => e.into_inner().contains_key(&username),
+        };
 
         if let Some(pw) = env_pw {
             if exists {
@@ -278,27 +288,46 @@ impl Auth {
         // Fresh install: no admin yet. Instead of generating a throwaway
         // password, enter setup mode — the user creates their own account in
         // the browser, guarded by this one-time code (main.rs prints it).
-        if self.users.lock().unwrap().is_empty() {
-            *self.setup_token.lock().unwrap() = Some(gen_token());
+        let is_empty = match self.users.lock() {
+            Ok(m) => m.is_empty(),
+            Err(e) => e.into_inner().is_empty(),
+        };
+        if is_empty {
+            match self.setup_token.lock() {
+                Ok(mut m) => *m = Some(gen_token()),
+                Err(e) => *e.into_inner() = Some(gen_token()),
+            }
         }
         Ok(())
     }
 
     /// True until the first admin account is created (fresh install).
     pub fn needs_setup(&self) -> bool {
-        self.users.lock().unwrap().is_empty()
+        match self.users.lock() {
+            Ok(m) => m.is_empty(),
+            Err(e) => e.into_inner().is_empty(),
+        }
     }
 
     /// The one-time setup code (shown at startup), or `None` once configured.
     pub fn setup_token(&self) -> Option<String> {
-        self.setup_token.lock().unwrap().clone()
+        match self.setup_token.lock() {
+            Ok(m) => m.clone(),
+            Err(e) => e.into_inner().clone(),
+        }
     }
 
     /// True if `token` matches the active setup code (constant-time).
     pub fn setup_token_ok(&self, token: &str) -> bool {
-        match &*self.setup_token.lock().unwrap() {
-            Some(t) => ct_eq(t.as_bytes(), token.as_bytes()),
-            None => false,
+        match self.setup_token.lock() {
+            Ok(m) => match &*m {
+                Some(t) => ct_eq(t.as_bytes(), token.as_bytes()),
+                None => false,
+            },
+            Err(e) => match &*e.into_inner() {
+                Some(t) => ct_eq(t.as_bytes(), token.as_bytes()),
+                None => false,
+            },
         }
     }
 
@@ -308,23 +337,36 @@ impl Auth {
             return Err(anyhow!("already set up"));
         }
         self.add_user(username, password, Role::Admin)?;
-        *self.setup_token.lock().unwrap() = None;
+        match self.setup_token.lock() {
+            Ok(mut m) => *m = None,
+            Err(e) => *e.into_inner() = None,
+        };
         self.log_event(username, "completed first-run setup");
         Ok(())
     }
 
     fn ensure_role(&self, username: &str, role: Role) -> Result<()> {
-        {
-            let mut users = self.users.lock().unwrap();
-            if let Some(u) = users.get_mut(username) {
-                u.role = role;
+        match self.users.lock() {
+            Ok(mut users) => {
+                if let Some(u) = users.get_mut(username) {
+                    u.role = role;
+                }
+            }
+            Err(e) => {
+                let mut users = e.into_inner();
+                if let Some(u) = users.get_mut(username) {
+                    u.role = role;
+                }
             }
         }
         self.save()
     }
 
     fn save(&self) -> Result<()> {
-        let list: Vec<User> = self.users.lock().unwrap().values().cloned().collect();
+        let list: Vec<User> = match self.users.lock() {
+            Ok(m) => m.values().cloned().collect(),
+            Err(e) => e.into_inner().values().cloned().collect(),
+        };
         if let Some(dir) = self.path.parent() {
             std::fs::create_dir_all(dir).ok();
         }
@@ -334,11 +376,13 @@ impl Auth {
     // ---- user management ----
 
     pub fn list_users(&self) -> Vec<serde_json::Value> {
-        let usage = self.usage.lock().unwrap();
-        let mut v: Vec<_> = self
-            .users
-            .lock()
-            .unwrap()
+        let (usage, users) = match (self.usage.lock(), self.users.lock()) {
+            (Ok(u), Ok(users)) => (u, users),
+            (Err(e), Ok(users)) => (e.into_inner(), users),
+            (Ok(u), Err(e)) => (u, e.into_inner()),
+            (Err(e1), Err(e2)) => (e1.into_inner(), e2.into_inner()),
+        };
+        let mut v: Vec<_> = users
             .values()
             .map(|u| {
                 let us = usage.get(&u.username);
@@ -387,48 +431,93 @@ impl Auth {
                 "password must be at least {MIN_PASSWORD_LEN} characters"
             ));
         }
-        let mut users = self.users.lock().unwrap();
-        if users.contains_key(username) {
-            return Err(anyhow!("user '{username}' already exists"));
+        match self.users.lock() {
+            Ok(mut users) => {
+                if users.contains_key(username) {
+                    return Err(anyhow!("user '{username}' already exists"));
+                }
+                users.insert(
+                    username.to_string(),
+                    User {
+                        username: username.to_string(),
+                        password_hash: hash_password(password)?,
+                        role,
+                        created: now_unix(),
+                        api_token: None,
+                        email,
+                        disabled: false,
+                        totp_secret: None,
+                        recovery_hashes: Vec::new(),
+                    },
+                );
+                drop(users);
+                self.save()
+            }
+            Err(e) => {
+                let mut users = e.into_inner();
+                if users.contains_key(username) {
+                    return Err(anyhow!("user '{username}' already exists"));
+                }
+                users.insert(
+                    username.to_string(),
+                    User {
+                        username: username.to_string(),
+                        password_hash: hash_password(password)?,
+                        role,
+                        created: now_unix(),
+                        api_token: None,
+                        email,
+                        disabled: false,
+                        totp_secret: None,
+                        recovery_hashes: Vec::new(),
+                    },
+                );
+                drop(users);
+                self.save()
+            }
         }
-        users.insert(
-            username.to_string(),
-            User {
-                username: username.to_string(),
-                password_hash: hash_password(password)?,
-                role,
-                created: now_unix(),
-                api_token: None,
-                email,
-                disabled: false,
-                totp_secret: None,
-                recovery_hashes: Vec::new(),
-            },
-        );
-        drop(users);
-        self.save()
     }
 
     // ---- invite-only registration ----
 
     pub fn registration_open(&self) -> bool {
-        self.config.lock().unwrap().registration_open
+        match self.config.lock() {
+            Ok(m) => m.registration_open,
+            Err(e) => e.into_inner().registration_open,
+        }
     }
 
     pub fn maintenance(&self) -> bool {
-        self.config.lock().unwrap().maintenance
+        match self.config.lock() {
+            Ok(m) => m.maintenance,
+            Err(e) => e.into_inner().maintenance,
+        }
     }
 
     pub fn max_concurrent(&self) -> u32 {
-        self.config.lock().unwrap().max_concurrent_downloads
+        match self.config.lock() {
+            Ok(m) => m.max_concurrent_downloads,
+            Err(e) => e.into_inner().max_concurrent_downloads,
+        }
     }
 
     pub fn retention_days(&self) -> u32 {
-        self.config.lock().unwrap().retention_days
+        match self.config.lock() {
+            Ok(m) => m.retention_days,
+            Err(e) => e.into_inner().retention_days,
+        }
+    }
+
+    /// Whether secure cookies are enabled (HTTPS mode).
+    pub fn secure_cookie(&self) -> bool {
+        self.secure_cookie
     }
 
     pub fn config_json(&self) -> serde_json::Value {
-        let c = self.config.lock().unwrap();
+        let c = match self.config.lock() {
+            Ok(m) => m,
+            Err(e) => e.into_inner(),
+        };
         json!({
             "registration_open": c.registration_open,
             "maintenance": c.maintenance,
@@ -444,12 +533,20 @@ impl Auth {
         max_concurrent: u32,
         retention_days: u32,
     ) {
-        {
-            let mut c = self.config.lock().unwrap();
-            c.registration_open = registration_open;
-            c.maintenance = maintenance;
-            c.max_concurrent_downloads = max_concurrent;
-            c.retention_days = retention_days;
+        match self.config.lock() {
+            Ok(mut c) => {
+                c.registration_open = registration_open;
+                c.maintenance = maintenance;
+                c.max_concurrent_downloads = max_concurrent;
+                c.retention_days = retention_days;
+            }
+            Err(e) => {
+                let mut c = e.into_inner();
+                c.registration_open = registration_open;
+                c.maintenance = maintenance;
+                c.max_concurrent_downloads = max_concurrent;
+                c.retention_days = retention_days;
+            }
         }
         self.save_config();
     }
@@ -462,7 +559,10 @@ impl Auth {
         let code = code.trim();
         // Validate the invite up front (without consuming it yet).
         {
-            let invites = self.invites.lock().unwrap();
+            let invites = match self.invites.lock() {
+                Ok(m) => m,
+                Err(e) => e.into_inner(),
+            };
             let inv = invites
                 .get(code)
                 .ok_or_else(|| anyhow!("invalid invite code"))?;
@@ -480,8 +580,18 @@ impl Auth {
         // Creates the account (also validates username/password/uniqueness).
         self.add_user_full(username, password, Role::User, Some(email.to_string()))?;
         // Consume one invite use.
-        if let Some(inv) = self.invites.lock().unwrap().get_mut(code) {
-            inv.used += 1;
+        match self.invites.lock() {
+            Ok(mut invites) => {
+                if let Some(inv) = invites.get_mut(code) {
+                    inv.used += 1;
+                }
+            }
+            Err(e) => {
+                let mut invites = e.into_inner();
+                if let Some(inv) = invites.get_mut(code) {
+                    inv.used += 1;
+                }
+            }
         }
         self.save_invites();
         self.log_event(username.trim(), "registered with invite");
@@ -498,19 +608,20 @@ impl Auth {
             expires: (expires_days > 0).then(|| now_unix() + expires_days as u64 * 86400),
             note: note.trim().to_string(),
         };
-        self.invites
-            .lock()
-            .unwrap()
-            .insert(invite.code.clone(), invite.clone());
+        match self.invites.lock() {
+            Ok(mut m) => m.insert(invite.code.clone(), invite.clone()),
+            Err(e) => e.into_inner().insert(invite.code.clone(), invite.clone()),
+        };
         self.save_invites();
         invite
     }
 
     pub fn list_invites(&self) -> Vec<serde_json::Value> {
-        let mut v: Vec<(u64, serde_json::Value)> = self
-            .invites
-            .lock()
-            .unwrap()
+        let invites = match self.invites.lock() {
+            Ok(m) => m,
+            Err(e) => e.into_inner(),
+        };
+        let mut v: Vec<(u64, serde_json::Value)> = invites
             .values()
             .map(|i| {
                 let expired = matches!(i.expires, Some(e) if now_unix() > e);
@@ -530,64 +641,89 @@ impl Auth {
     }
 
     pub fn delete_invite(&self, code: &str) {
-        self.invites.lock().unwrap().remove(code);
+        match self.invites.lock() {
+            Ok(mut m) => m.remove(code),
+            Err(e) => e.into_inner().remove(code),
+        };
         self.save_invites();
     }
 
     // ---- ban / activity ----
 
     pub fn set_disabled(&self, username: &str, disabled: bool) -> Result<()> {
-        {
-            let mut users = self.users.lock().unwrap();
-            let u = users
-                .get_mut(username)
-                .ok_or_else(|| anyhow!("no such user"))?;
-            if u.role == Role::Admin && disabled {
-                return Err(anyhow!("cannot disable an admin account"));
+        match self.users.lock() {
+            Ok(mut users) => {
+                let u = users
+                    .get_mut(username)
+                    .ok_or_else(|| anyhow!("no such user"))?;
+                if u.role == Role::Admin && disabled {
+                    return Err(anyhow!("cannot disable an admin account"));
+                }
+                u.disabled = disabled;
             }
-            u.disabled = disabled;
+            Err(e) => {
+                let mut users = e.into_inner();
+                let u = users
+                    .get_mut(username)
+                    .ok_or_else(|| anyhow!("no such user"))?;
+                if u.role == Role::Admin && disabled {
+                    return Err(anyhow!("cannot disable an admin account"));
+                }
+                u.disabled = disabled;
+            }
         }
         if disabled {
             // Drop the banned user's sessions immediately.
-            self.sessions
-                .lock()
-                .unwrap()
-                .retain(|_, s| s.username != username);
+            match self.sessions.lock() {
+                Ok(mut m) => m.retain(|_, s| s.username != username),
+                Err(e) => e.into_inner().retain(|_, s| s.username != username),
+            };
         }
         self.save()
     }
 
     pub fn is_disabled(&self, username: &str) -> bool {
-        self.users
-            .lock()
-            .unwrap()
-            .get(username)
-            .map(|u| u.disabled)
-            .unwrap_or(false)
+        match self.users.lock() {
+            Ok(m) => m.get(username).map(|u| u.disabled).unwrap_or(false),
+            Err(e) => e.into_inner().get(username).map(|u| u.disabled).unwrap_or(false),
+        }
     }
 
     pub fn touch(&self, username: &str, ip: Option<String>) {
-        let mut usage = self.usage.lock().unwrap();
-        let e = usage.entry(username.to_string()).or_default();
-        e.last_seen = now_unix();
-        if ip.is_some() {
-            e.last_ip = ip;
+        match self.usage.lock() {
+            Ok(mut usage) => {
+                let e = usage.entry(username.to_string()).or_default();
+                e.last_seen = now_unix();
+                if ip.is_some() {
+                    e.last_ip = ip;
+                }
+            }
+            Err(e) => {
+                let mut usage = e.into_inner();
+                let entry = usage.entry(username.to_string()).or_default();
+                entry.last_seen = now_unix();
+                if ip.is_some() {
+                    entry.last_ip = ip;
+                }
+            }
         }
     }
 
     /// Add to a user's cumulative bytes-served counter.
     pub fn add_bytes(&self, username: &str, n: u64) {
-        self.usage
-            .lock()
-            .unwrap()
-            .entry(username.to_string())
-            .or_default()
-            .bytes += n;
+        match self.usage.lock() {
+            Ok(mut usage) => usage.entry(username.to_string()).or_default().bytes += n,
+            Err(e) => e.into_inner().entry(username.to_string()).or_default().bytes += n,
+        };
     }
 
     /// Persist the usage map (cumulative bandwidth) to disk.
     pub fn save_usage(&self) {
-        if let Ok(bytes) = serde_json::to_vec_pretty(&*self.usage.lock().unwrap()) {
+        let usage = match self.usage.lock() {
+            Ok(m) => m,
+            Err(e) => e.into_inner(),
+        };
+        if let Ok(bytes) = serde_json::to_vec_pretty(&*usage) {
             let _ = write_private(&self.usage_path, &bytes);
         }
     }
@@ -596,7 +732,10 @@ impl Auth {
 
     /// Public account info for the given user (includes their API token).
     pub fn account(&self, username: &str) -> Option<serde_json::Value> {
-        let users = self.users.lock().unwrap();
+        let users = match self.users.lock() {
+            Ok(m) => m,
+            Err(e) => e.into_inner(),
+        };
         let u = users.get(username)?;
         Some(json!({
             "username": u.username,
@@ -612,12 +751,20 @@ impl Auth {
     /// Issue (or replace) the user's API token and return it.
     pub fn regenerate_token(&self, username: &str) -> Result<String> {
         let token = format!("mb_{}", gen_token());
-        {
-            let mut users = self.users.lock().unwrap();
-            let u = users
-                .get_mut(username)
-                .ok_or_else(|| anyhow!("no such user"))?;
-            u.api_token = Some(token.clone());
+        match self.users.lock() {
+            Ok(mut users) => {
+                let u = users
+                    .get_mut(username)
+                    .ok_or_else(|| anyhow!("no such user"))?;
+                u.api_token = Some(token.clone());
+            }
+            Err(e) => {
+                let mut users = e.into_inner();
+                let u = users
+                    .get_mut(username)
+                    .ok_or_else(|| anyhow!("no such user"))?;
+                u.api_token = Some(token.clone());
+            }
         }
         self.save()?;
         Ok(token)
@@ -629,9 +776,11 @@ impl Auth {
         if token.is_empty() {
             return None;
         }
-        self.users
-            .lock()
-            .unwrap()
+        let users = match self.users.lock() {
+            Ok(m) => m,
+            Err(e) => e.into_inner(),
+        };
+        users
             .values()
             .find(|u| {
                 u.api_token
@@ -665,18 +814,24 @@ impl Auth {
 
     /// (user count, active session count).
     pub fn stats(&self) -> (usize, usize) {
-        (
-            self.users.lock().unwrap().len(),
-            self.sessions.lock().unwrap().len(),
-        )
+        let users = match self.users.lock() {
+            Ok(m) => m,
+            Err(e) => e.into_inner(),
+        };
+        let sessions = match self.sessions.lock() {
+            Ok(m) => m,
+            Err(e) => e.into_inner(),
+        };
+        (users.len(), sessions.len())
     }
 
     /// All active sessions, newest first; `current_token` marks the caller's.
     pub fn list_sessions(&self, current_token: &str) -> Vec<serde_json::Value> {
-        let mut list: Vec<(SystemTime, serde_json::Value)> = self
-            .sessions
-            .lock()
-            .unwrap()
+        let sessions = match self.sessions.lock() {
+            Ok(m) => m,
+            Err(e) => e.into_inner(),
+        };
+        let mut list: Vec<(SystemTime, serde_json::Value)> = sessions
             .iter()
             .map(|(tok, s)| {
                 (
@@ -697,36 +852,59 @@ impl Auth {
     }
 
     pub fn revoke_session(&self, sid: &str) {
-        self.sessions.lock().unwrap().retain(|_, s| s.id != sid);
+        match self.sessions.lock() {
+            Ok(mut m) => m.retain(|_, s| s.id != sid),
+            Err(e) => e.into_inner().retain(|_, s| s.id != sid),
+        }
     }
 
     /// Drop every session except the caller's (force everyone else to re-login).
     pub fn revoke_all_except(&self, keep_token: &str) {
-        self.sessions
-            .lock()
-            .unwrap()
-            .retain(|tok, _| tok == keep_token);
+        match self.sessions.lock() {
+            Ok(mut m) => m.retain(|tok, _| tok == keep_token),
+            Err(e) => e.into_inner().retain(|tok, _| tok == keep_token),
+        }
     }
 
     pub fn log_event(&self, user: &str, action: &str) {
-        let mut ev = self.events.lock().unwrap();
-        ev.push_back(Event {
-            time: now_unix(),
-            user: user.to_string(),
-            action: action.to_string(),
-        });
-        while ev.len() > MAX_EVENTS {
-            ev.pop_front();
+        match self.events.lock() {
+            Ok(mut ev) => {
+                ev.push_back(Event {
+                    time: now_unix(),
+                    user: user.to_string(),
+                    action: action.to_string(),
+                });
+                while ev.len() > MAX_EVENTS {
+                    ev.pop_front();
+                }
+            }
+            Err(e) => {
+                let mut ev = e.into_inner();
+                ev.push_back(Event {
+                    time: now_unix(),
+                    user: user.to_string(),
+                    action: action.to_string(),
+                });
+                while ev.len() > MAX_EVENTS {
+                    ev.pop_front();
+                }
+            }
         }
     }
 
     /// Recent audit-log entries, newest first.
     pub fn recent_events(&self) -> Vec<Event> {
-        self.events.lock().unwrap().iter().rev().cloned().collect()
+        match self.events.lock() {
+            Ok(m) => m.iter().rev().cloned().collect(),
+            Err(e) => e.into_inner().iter().rev().cloned().collect(),
+        }
     }
 
     pub fn delete_user(&self, username: &str) -> Result<()> {
-        let mut users = self.users.lock().unwrap();
+        let mut users = match self.users.lock() {
+            Ok(m) => m,
+            Err(e) => e.into_inner(),
+        };
         let is_last_admin = users.get(username).map(|u| u.role) == Some(Role::Admin)
             && users.values().filter(|u| u.role == Role::Admin).count() == 1;
         if is_last_admin {
@@ -746,23 +924,29 @@ impl Auth {
             ));
         }
         let hash = hash_password(password)?;
-        let mut users = self.users.lock().unwrap();
-        users
-            .get_mut(username)
-            .ok_or_else(|| anyhow!("no such user"))?
-            .password_hash = hash;
-        drop(users);
+        match self.users.lock() {
+            Ok(mut users) => {
+                users
+                    .get_mut(username)
+                    .ok_or_else(|| anyhow!("no such user"))?
+                    .password_hash = hash;
+            }
+            Err(e) => {
+                let mut users = e.into_inner();
+                users
+                    .get_mut(username)
+                    .ok_or_else(|| anyhow!("no such user"))?
+                    .password_hash = hash;
+            }
+        }
         self.save()
     }
 
     pub fn change_own_password(&self, username: &str, old: &str, new: &str) -> Result<()> {
-        let ok = self
-            .users
-            .lock()
-            .unwrap()
-            .get(username)
-            .map(|u| verify_password(old, &u.password_hash))
-            .unwrap_or(false);
+        let ok = match self.users.lock() {
+            Ok(m) => m.get(username).map(|u| verify_password(old, &u.password_hash)).unwrap_or(false),
+            Err(e) => e.into_inner().get(username).map(|u| verify_password(old, &u.password_hash)).unwrap_or(false),
+        };
         if !ok {
             return Err(anyhow!("current password is incorrect"));
         }
@@ -778,13 +962,18 @@ impl Auth {
             return Err(anyhow!("too many attempts; wait a few minutes"));
         }
 
-        let found = self.users.lock().unwrap().get(username).map(|u| {
-            (
+        let found = match self.users.lock() {
+            Ok(m) => m.get(username).map(|u| (
                 u.role,
                 u.disabled,
                 verify_password(password, &u.password_hash),
-            )
-        });
+            )),
+            Err(e) => e.into_inner().get(username).map(|u| (
+                u.role,
+                u.disabled,
+                verify_password(password, &u.password_hash),
+            )),
+        };
 
         match found {
             None => {
@@ -796,17 +985,30 @@ impl Auth {
             }
             Some((_, true, _)) => Err(anyhow!("this account has been disabled")),
             Some((role, false, true)) => {
-                self.throttle.lock().unwrap().remove(username);
+                match self.throttle.lock() {
+                    Ok(mut m) => m.remove(username),
+                    Err(e) => e.into_inner().remove(username),
+                };
                 if self.has_2fa(username) {
                     let challenge = gen_token();
                     let now = SystemTime::now();
-                    let mut ch = self.challenges.lock().unwrap();
-                    ch.retain(|_, v| now < v.1); // drop expired challenges
-                    ch.insert(
-                        challenge.clone(),
-                        (username.to_string(), now + Duration::from_secs(300), 0),
-                    );
-                    drop(ch);
+                    match self.challenges.lock() {
+                        Ok(mut ch) => {
+                            ch.retain(|_, v| now < v.1); // drop expired challenges
+                            ch.insert(
+                                challenge.clone(),
+                                (username.to_string(), now + Duration::from_secs(300), 0),
+                            );
+                        }
+                        Err(e) => {
+                            let mut ch = e.into_inner();
+                            ch.retain(|_, v| now < v.1);
+                            ch.insert(
+                                challenge.clone(),
+                                (username.to_string(), now + Duration::from_secs(300), 0),
+                            );
+                        }
+                    };
                     Ok(LoginOutcome::TwoFactor(challenge))
                 } else {
                     Ok(LoginOutcome::Session(self.new_session(username, role)))
@@ -822,55 +1024,94 @@ impl Auth {
     fn new_session(&self, username: &str, role: Role) -> String {
         let token = gen_token();
         let now = SystemTime::now();
-        self.sessions.lock().unwrap().insert(
-            token.clone(),
-            SessionData {
-                id: gen_token()[..12].to_string(),
-                username: username.to_string(),
-                role,
-                created: now,
-                expires: now + SESSION_TTL,
-            },
-        );
+        match self.sessions.lock() {
+            Ok(mut m) => m.insert(
+                token.clone(),
+                SessionData {
+                    id: gen_token()[..12].to_string(),
+                    username: username.to_string(),
+                    role,
+                    created: now,
+                    expires: now + SESSION_TTL,
+                },
+            ),
+            Err(e) => e.into_inner().insert(
+                token.clone(),
+                SessionData {
+                    id: gen_token()[..12].to_string(),
+                    username: username.to_string(),
+                    role,
+                    created: now,
+                    expires: now + SESSION_TTL,
+                },
+            ),
+        };
         token
     }
 
     // ---- two-factor (TOTP) ----
 
     pub fn has_2fa(&self, username: &str) -> bool {
-        self.users
-            .lock()
-            .unwrap()
-            .get(username)
-            .map(|u| u.totp_secret.is_some())
-            .unwrap_or(false)
+        match self.users.lock() {
+            Ok(m) => m.get(username).map(|u| u.totp_secret.is_some()).unwrap_or(false),
+            Err(e) => e.into_inner().get(username).map(|u| u.totp_secret.is_some()).unwrap_or(false),
+        }
     }
 
     /// Complete the 2FA login step: verify a TOTP or recovery code for the
     /// challenge and issue a session.
     pub fn verify_2fa(&self, challenge: &str, code: &str) -> Result<String> {
         let username = {
-            let mut ch = self.challenges.lock().unwrap();
-            let entry = ch
-                .get_mut(challenge)
-                .ok_or_else(|| anyhow!("invalid or expired challenge — log in again"))?;
-            if SystemTime::now() > entry.1 {
-                ch.remove(challenge);
-                return Err(anyhow!("challenge expired — log in again"));
+            match self.challenges.lock() {
+                Ok(mut ch) => {
+                    let entry = ch
+                        .get_mut(challenge)
+                        .ok_or_else(|| anyhow!("invalid or expired challenge — log in again"))?;
+                    if SystemTime::now() > entry.1 {
+                        ch.remove(challenge);
+                        return Err(anyhow!("challenge expired — log in again"));
+                    }
+                    entry.2 += 1;
+                    if entry.2 > 6 {
+                        ch.remove(challenge);
+                        return Err(anyhow!("too many attempts — log in again"));
+                    }
+                    entry.0.clone()
+                }
+                Err(e) => {
+                    let mut ch = e.into_inner();
+                    let entry = ch
+                        .get_mut(challenge)
+                        .ok_or_else(|| anyhow!("invalid or expired challenge — log in again"))?;
+                    if SystemTime::now() > entry.1 {
+                        ch.remove(challenge);
+                        return Err(anyhow!("challenge expired — log in again"));
+                    }
+                    entry.2 += 1;
+                    if entry.2 > 6 {
+                        ch.remove(challenge);
+                        return Err(anyhow!("too many attempts — log in again"));
+                    }
+                    entry.0.clone()
+                }
             }
-            entry.2 += 1;
-            if entry.2 > 6 {
-                ch.remove(challenge);
-                return Err(anyhow!("too many attempts — log in again"));
-            }
-            entry.0.clone()
         };
         let (secret, role, disabled) = {
-            let users = self.users.lock().unwrap();
-            let u = users
-                .get(&username)
-                .ok_or_else(|| anyhow!("no such user"))?;
-            (u.totp_secret.clone(), u.role, u.disabled)
+            match self.users.lock() {
+                Ok(users) => {
+                    let u = users
+                        .get(&username)
+                        .ok_or_else(|| anyhow!("no such user"))?;
+                    (u.totp_secret.clone(), u.role, u.disabled)
+                }
+                Err(e) => {
+                    let users = e.into_inner();
+                    let u = users
+                        .get(&username)
+                        .ok_or_else(|| anyhow!("no such user"))?;
+                    (u.totp_secret.clone(), u.role, u.disabled)
+                }
+            }
         };
         if disabled {
             return Err(anyhow!("this account has been disabled"));
@@ -881,8 +1122,14 @@ impl Auth {
         let secret = secret.ok_or_else(|| anyhow!("2FA is not enabled"))?;
         let code = code.trim();
         if check_totp(&secret, &username, code) || self.consume_recovery(&username, code) {
-            self.throttle.lock().unwrap().remove(&username);
-            self.challenges.lock().unwrap().remove(challenge);
+            match self.throttle.lock() {
+                Ok(mut m) => m.remove(&username),
+                Err(e) => e.into_inner().remove(&username),
+            };
+            match self.challenges.lock() {
+                Ok(mut ch) => ch.remove(challenge),
+                Err(e) => e.into_inner().remove(challenge),
+            };
             Ok(self.new_session(&username, role))
         } else {
             // Count 2FA failures toward the per-username throttle so a stolen
@@ -901,26 +1148,47 @@ impl Auth {
         let totp = make_totp(&secret, username)?;
         let url = totp.get_url();
         let qr = qr_svg(&url).ok_or_else(|| anyhow!("could not render QR code"))?;
-        self.pending_2fa.lock().unwrap().insert(
-            username.to_string(),
-            (secret.clone(), SystemTime::now() + Duration::from_secs(600)),
-        );
+        match self.pending_2fa.lock() {
+            Ok(mut p) => p.insert(
+                username.to_string(),
+                (secret.clone(), SystemTime::now() + Duration::from_secs(600)),
+            ),
+            Err(e) => e.into_inner().insert(
+                username.to_string(),
+                (secret.clone(), SystemTime::now() + Duration::from_secs(600)),
+            ),
+        };
         Ok((secret, url, qr))
     }
 
     /// Confirm enrollment with a code; on success returns one-time recovery codes.
     pub fn confirm_2fa(&self, username: &str, code: &str) -> Result<Vec<String>> {
         let secret = {
-            let mut p = self.pending_2fa.lock().unwrap();
-            let (s, exp) = p
-                .get(username)
-                .cloned()
-                .ok_or_else(|| anyhow!("start 2FA setup first"))?;
-            if SystemTime::now() > exp {
-                p.remove(username);
-                return Err(anyhow!("setup expired — start again"));
+            match self.pending_2fa.lock() {
+                Ok(mut p) => {
+                    let (s, exp) = p
+                        .get(username)
+                        .cloned()
+                        .ok_or_else(|| anyhow!("start 2FA setup first"))?;
+                    if SystemTime::now() > exp {
+                        p.remove(username);
+                        return Err(anyhow!("setup expired — start again"));
+                    }
+                    s
+                }
+                Err(e) => {
+                    let mut p = e.into_inner();
+                    let (s, exp) = p
+                        .get(username)
+                        .cloned()
+                        .ok_or_else(|| anyhow!("start 2FA setup first"))?;
+                    if SystemTime::now() > exp {
+                        p.remove(username);
+                        return Err(anyhow!("setup expired — start again"));
+                    }
+                    s
+                }
             }
-            s
         };
         if !check_totp(&secret, username, code.trim()) {
             return Err(anyhow!(
@@ -929,47 +1197,66 @@ impl Auth {
         }
         let codes: Vec<String> = (0..8).map(|_| gen_recovery_code()).collect();
         let hashes: Vec<String> = codes.iter().map(|c| sha256_hex(c)).collect();
-        {
-            let mut users = self.users.lock().unwrap();
-            let u = users
-                .get_mut(username)
-                .ok_or_else(|| anyhow!("no such user"))?;
-            u.totp_secret = Some(secret);
-            u.recovery_hashes = hashes;
+        match self.users.lock() {
+            Ok(mut users) => {
+                let u = users
+                    .get_mut(username)
+                    .ok_or_else(|| anyhow!("no such user"))?;
+                u.totp_secret = Some(secret);
+                u.recovery_hashes = hashes;
+            }
+            Err(e) => {
+                let mut users = e.into_inner();
+                let u = users
+                    .get_mut(username)
+                    .ok_or_else(|| anyhow!("no such user"))?;
+                u.totp_secret = Some(secret);
+                u.recovery_hashes = hashes;
+            }
         }
-        self.pending_2fa.lock().unwrap().remove(username);
+        match self.pending_2fa.lock() {
+            Ok(mut m) => m.remove(username),
+            Err(e) => e.into_inner().remove(username),
+        };
         self.save()?;
         Ok(codes)
     }
 
     /// Disable 2FA (requires the account password).
     pub fn disable_2fa(&self, username: &str, password: &str) -> Result<()> {
-        let ok = self
-            .users
-            .lock()
-            .unwrap()
-            .get(username)
-            .map(|u| verify_password(password, &u.password_hash))
-            .unwrap_or(false);
+        let ok = match self.users.lock() {
+            Ok(m) => m.get(username).map(|u| verify_password(password, &u.password_hash)).unwrap_or(false),
+            Err(e) => e.into_inner().get(username).map(|u| verify_password(password, &u.password_hash)).unwrap_or(false),
+        };
         if !ok {
             return Err(anyhow!("password is incorrect"));
         }
-        {
-            let mut users = self.users.lock().unwrap();
-            if let Some(u) = users.get_mut(username) {
-                u.totp_secret = None;
-                u.recovery_hashes.clear();
+        match self.users.lock() {
+            Ok(mut users) => {
+                if let Some(u) = users.get_mut(username) {
+                    u.totp_secret = None;
+                    u.recovery_hashes.clear();
+                }
+            }
+            Err(e) => {
+                let mut users = e.into_inner();
+                if let Some(u) = users.get_mut(username) {
+                    u.totp_secret = None;
+                    u.recovery_hashes.clear();
+                }
             }
         }
-        self.pending_2fa.lock().unwrap().remove(username);
+        match self.pending_2fa.lock() {
+            Ok(mut m) => m.remove(username),
+            Err(e) => e.into_inner().remove(username),
+        };
         self.save()
     }
 
     fn consume_recovery(&self, username: &str, code: &str) -> bool {
         let h = sha256_hex(code);
-        let removed = {
-            let mut users = self.users.lock().unwrap();
-            match users.get_mut(username) {
+        let removed = match self.users.lock() {
+            Ok(mut users) => match users.get_mut(username) {
                 Some(u) => u
                     .recovery_hashes
                     .iter()
@@ -979,6 +1266,20 @@ impl Auth {
                     })
                     .is_some(),
                 None => false,
+            },
+            Err(e) => {
+                let mut users = e.into_inner();
+                match users.get_mut(username) {
+                    Some(u) => u
+                        .recovery_hashes
+                        .iter()
+                        .position(|x| *x == h)
+                        .map(|p| {
+                            u.recovery_hashes.remove(p);
+                        })
+                        .is_some(),
+                    None => false,
+                }
             }
         };
         if removed {
@@ -988,17 +1289,44 @@ impl Auth {
     }
 
     fn is_throttled(&self, username: &str) -> bool {
-        let t = self.throttle.lock().unwrap();
-        match t.get(username) {
-            Some((fails, since)) => {
-                since.elapsed().unwrap_or(FAIL_WINDOW) < FAIL_WINDOW && *fails >= MAX_FAILS
-            }
-            None => false,
+        match self.throttle.lock() {
+            Ok(t) => match t.get(username) {
+                Some((fails, since)) => {
+                    since.elapsed().unwrap_or(FAIL_WINDOW) < FAIL_WINDOW && *fails >= MAX_FAILS
+                }
+                None => false,
+            },
+            Err(e) => match e.into_inner().get(username) {
+                Some((fails, since)) => {
+                    since.elapsed().unwrap_or(FAIL_WINDOW) < FAIL_WINDOW && *fails >= MAX_FAILS
+                }
+                None => false,
+            },
         }
     }
 
     fn record_failure(&self, username: &str) {
-        let mut t = self.throttle.lock().unwrap();
+        match self.throttle.lock() {
+            Ok(mut t) => {
+                let entry = t
+                    .entry(username.to_string())
+                    .or_insert((0, SystemTime::now()));
+                if entry.1.elapsed().unwrap_or_default() > FAIL_WINDOW {
+                    *entry = (0, SystemTime::now());
+                }
+                entry.0 += 1;
+            }
+            Err(e) => {
+                let mut t = e.into_inner();
+                let entry = t
+                    .entry(username.to_string())
+                    .or_insert((0, SystemTime::now()));
+                if entry.1.elapsed().unwrap_or_default() > FAIL_WINDOW {
+                    *entry = (0, SystemTime::now());
+                }
+                entry.0 += 1;
+            }
+        };
         let entry = t
             .entry(username.to_string())
             .or_insert((0, SystemTime::now()));
@@ -1009,22 +1337,40 @@ impl Auth {
     }
 
     pub fn session(&self, token: &str) -> Option<Identity> {
-        let mut s = self.sessions.lock().unwrap();
-        match s.get(token) {
-            Some(sd) if SystemTime::now() < sd.expires => Some(Identity {
-                username: sd.username.clone(),
-                role: sd.role,
-            }),
-            Some(_) => {
-                s.remove(token);
-                None
+        match self.sessions.lock() {
+            Ok(mut s) => match s.get(token) {
+                Some(sd) if SystemTime::now() < sd.expires => Some(Identity {
+                    username: sd.username.clone(),
+                    role: sd.role,
+                }),
+                Some(_) => {
+                    s.remove(token);
+                    None
+                }
+                None => None,
+            },
+            Err(e) => {
+                let mut s = e.into_inner();
+                match s.get(token) {
+                    Some(sd) if SystemTime::now() < sd.expires => Some(Identity {
+                        username: sd.username.clone(),
+                        role: sd.role,
+                    }),
+                    Some(_) => {
+                        s.remove(token);
+                        None
+                    }
+                    None => None,
+                }
             }
-            None => None,
         }
     }
 
     pub fn logout(&self, token: &str) {
-        self.sessions.lock().unwrap().remove(token);
+        match self.sessions.lock() {
+            Ok(mut m) => m.remove(token),
+            Err(e) => e.into_inner().remove(token),
+        }
     }
 
     pub fn identity_from_headers(&self, headers: &HeaderMap) -> Option<Identity> {
@@ -1122,9 +1468,13 @@ pub fn token_from_headers(headers: &HeaderMap) -> Option<String> {
         .map(str::to_string)
 }
 
+// Argon2id parameters: m=65536 KiB (64 MiB), t=3 iterations, p=4 lanes
+const ARGON2_PARAMS: Params = Params::new(65536, 3, 4, None).expect("valid argon2 params");
+
 fn hash_password(pw: &str) -> Result<String> {
     let salt = SaltString::generate(&mut OsRng);
-    Ok(Argon2::default()
+    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, ARGON2_PARAMS);
+    Ok(argon2
         .hash_password(pw.as_bytes(), &salt)
         .map_err(|e| anyhow!("password hashing failed: {e}"))?
         .to_string())
@@ -1139,9 +1489,10 @@ fn dummy_hash() -> &'static str {
 
 fn verify_password(pw: &str, hash: &str) -> bool {
     match PasswordHash::new(hash) {
-        Ok(parsed) => Argon2::default()
-            .verify_password(pw.as_bytes(), &parsed)
-            .is_ok(),
+        Ok(parsed) => {
+            let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, ARGON2_PARAMS);
+            argon2.verify_password(pw.as_bytes(), &parsed).is_ok()
+        }
         Err(_) => false,
     }
 }

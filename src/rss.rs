@@ -63,55 +63,99 @@ impl RssManager {
     }
 
     pub fn list(&self) -> Vec<Feed> {
-        self.feeds.lock().unwrap().clone()
+        match self.feeds.lock() {
+            Ok(m) => m.clone(),
+            Err(e) => e.into_inner().clone(),
+        }
     }
 
     pub fn add(&self, url: String, filter: String) -> usize {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        self.feeds.lock().unwrap().push(Feed {
-            id,
-            url: url.trim().to_string(),
-            filter: filter.trim().to_string(),
-            enabled: true,
-            seeded: false,
-        });
+        match self.feeds.lock() {
+            Ok(mut m) => m.push(Feed {
+                id,
+                url: url.trim().to_string(),
+                filter: filter.trim().to_string(),
+                enabled: true,
+                seeded: false,
+            }),
+            Err(e) => e.into_inner().push(Feed {
+                id,
+                url: url.trim().to_string(),
+                filter: filter.trim().to_string(),
+                enabled: true,
+                seeded: false,
+            }),
+        };
         self.save();
         id
     }
 
     pub fn remove(&self, id: usize) {
-        self.feeds.lock().unwrap().retain(|f| f.id != id);
+        match self.feeds.lock() {
+            Ok(mut m) => m.retain(|f| f.id != id),
+            Err(e) => e.into_inner().retain(|f| f.id != id),
+        };
         self.save();
     }
 
     fn mark_seeded(&self, id: usize) {
-        if let Some(f) = self.feeds.lock().unwrap().iter_mut().find(|f| f.id == id) {
-            f.seeded = true;
+        match self.feeds.lock() {
+            Ok(mut m) => {
+                if let Some(f) = m.iter_mut().find(|f| f.id == id) {
+                    f.seeded = true;
+                }
+            }
+            Err(e) => {
+                let mut m = e.into_inner();
+                if let Some(f) = m.iter_mut().find(|f| f.id == id) {
+                    f.seeded = true;
+                }
+            }
         }
-        self.save();
+        self.save()
     }
 
     fn is_seen(&self, link: &str) -> bool {
-        self.seen.lock().unwrap().contains(link)
+        match self.seen.lock() {
+            Ok(m) => m.contains(link),
+            Err(e) => e.into_inner().contains(link),
+        }
     }
 
     fn mark_seen(&self, link: &str) {
-        let mut s = self.seen.lock().unwrap();
-        s.insert(link.to_string());
-        // Keep the persisted set from growing without bound.
-        if s.len() > 5000 {
-            let drop: Vec<String> = s.iter().take(s.len() - 5000).cloned().collect();
-            for d in drop {
-                s.remove(&d);
+        match self.seen.lock() {
+            Ok(mut s) => {
+                s.insert(link.to_string());
+                // Keep the persisted set from growing without bound.
+                if s.len() > 5000 {
+                    let drop: Vec<String> = s.iter().take(s.len() - 5000).cloned().collect();
+                    for d in drop {
+                        s.remove(&d);
+                    }
+                }
+            }
+            Err(e) => {
+                let mut s = e.into_inner();
+                s.insert(link.to_string());
+                if s.len() > 5000 {
+                    let drop: Vec<String> = s.iter().take(s.len() - 5000).cloned().collect();
+                    for d in drop {
+                        s.remove(&d);
+                    }
+                }
             }
         }
     }
 
     fn save(&self) {
-        let data = Persisted {
-            feeds: self.feeds.lock().unwrap().clone(),
-            seen: self.seen.lock().unwrap().iter().cloned().collect(),
+        let (feeds, seen) = match (self.feeds.lock(), self.seen.lock()) {
+            (Ok(f), Ok(s)) => (f.clone(), s.iter().cloned().collect()),
+            (Err(e), Ok(s)) => (e.into_inner().clone(), s.iter().cloned().collect()),
+            (Ok(f), Err(e)) => (f.clone(), e.into_inner().iter().cloned().collect()),
+            (Err(e1), Err(e2)) => (e1.into_inner().clone(), e2.into_inner().iter().cloned().collect()),
         };
+        let data = Persisted { feeds, seen };
         if let Some(dir) = self.path.parent() {
             let _ = std::fs::create_dir_all(dir);
         }

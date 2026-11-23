@@ -15,6 +15,23 @@ use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;
 use url::Url;
 
+/// Sanitize error messages to avoid leaking internal details.
+fn sanitize_error(e: &anyhow::Error) -> String {
+    let msg = e.to_string();
+    if msg.len() > 200 {
+        return "download failed".to_string();
+    }
+    let msg = msg
+        .replace("/home/", "")
+        .replace("/Users/", "")
+        .replace("C:\\", "")
+        .replace("\\", "/");
+    if msg.contains("at ") && msg.contains(":") && msg.lines().count() > 3 {
+        return "download failed".to_string();
+    }
+    msg
+}
+
 #[derive(Clone, Copy, PartialEq)]
 enum Phase {
     Downloading,
@@ -86,7 +103,10 @@ impl DirectManager {
         let Ok(records) = serde_json::from_slice::<Vec<Record>>(&data) else {
             return;
         };
-        let mut items = self.items.lock().unwrap();
+        let mut items = match self.items.lock() {
+            Ok(m) => m,
+            Err(e) => e.into_inner(),
+        };
         let mut max_id = 0;
         for r in records {
             // Re-sanitize on load: never trust a filename read back from disk
@@ -119,12 +139,16 @@ impl DirectManager {
 
     /// Write finished downloads to `index.json`.
     fn persist(&self) {
-        let records: Vec<Record> = self
-            .items
-            .lock()
-            .unwrap()
+        let items = match self.items.lock() {
+            Ok(m) => m,
+            Err(e) => e.into_inner(),
+        };
+        let records: Vec<Record> = items
             .values()
-            .filter(|i| *i.phase.lock().unwrap() == Phase::Done)
+            .filter(|i| match i.phase.lock() {
+                Ok(m) => *m == Phase::Done,
+                Err(e) => *e.into_inner() == Phase::Done,
+            })
             .map(|i| Record {
                 id: i.id,
                 url: i.url.clone(),
@@ -141,12 +165,22 @@ impl DirectManager {
 
     /// Number of a user's downloads currently in progress.
     pub fn active_count(&self, owner: &str) -> usize {
-        self.items
-            .lock()
-            .unwrap()
-            .values()
-            .filter(|i| i.owner == owner && *i.phase.lock().unwrap() == Phase::Downloading)
-            .count()
+        match self.items.lock() {
+            Ok(m) => m
+                .values()
+                .filter(|i| match i.phase.lock() {
+                    Ok(m) => *m == Phase::Downloading,
+                    Err(e) => *e.into_inner() == Phase::Downloading,
+                })
+                .count(),
+            Err(e) => e.into_inner()
+                .values()
+                .filter(|i| match i.phase.lock() {
+                    Ok(m) => *m == Phase::Downloading,
+                    Err(e) => *e.into_inner() == Phase::Downloading,
+                })
+                .count(),
+        }
     }
 
     /// Queue a direct download in the background; returns its id.
@@ -171,19 +205,31 @@ impl DirectManager {
             phase: Mutex::new(Phase::Downloading),
             error: Mutex::new(None),
         });
-        self.items.lock().unwrap().insert(id, item.clone());
+        match self.items.lock() {
+            Ok(mut m) => m.insert(id, item.clone()),
+            Err(e) => e.into_inner().insert(id, item.clone()),
+        }
 
         let mgr = self.clone();
         tokio::spawn(async move {
             match download(&item).await {
                 Ok(()) => {
-                    *item.phase.lock().unwrap() = Phase::Done;
+                    match item.phase.lock() {
+                        Ok(mut m) => *m = Phase::Done,
+                        Err(e) => *e.into_inner() = Phase::Done,
+                    };
                     mgr.persist();
                 }
                 Err(e) => {
                     // Top-level message only — don't surface the internal context chain.
-                    *item.error.lock().unwrap() = Some(format!("{e}"));
-                    *item.phase.lock().unwrap() = Phase::Error;
+                    match item.error.lock() {
+                        Ok(mut m) => *m = Some(sanitize_error(&e)),
+                        Err(e) => *e.into_inner() = Some(sanitize_error(&e)),
+                    };
+                    match item.phase.lock() {
+                        Ok(mut m) => *m = Phase::Error,
+                        Err(e) => *e.into_inner() = Phase::Error,
+                    };
                 }
             }
         });
@@ -191,37 +237,38 @@ impl DirectManager {
     }
 
     pub fn list(&self) -> Vec<DirectView> {
-        let mut v: Vec<DirectView> = self
-            .items
-            .lock()
-            .unwrap()
-            .values()
-            .map(|i| i.view())
-            .collect();
+        let items = match self.items.lock() {
+            Ok(m) => m,
+            Err(e) => e.into_inner(),
+        };
+        let mut v: Vec<DirectView> = items.values().map(|i| i.view()).collect();
         v.sort_by_key(|x| x.id);
         v
     }
 
     /// (path, filename) for serving a finished/partial download.
     pub fn path_of(&self, id: usize) -> Option<(PathBuf, String)> {
-        self.items
-            .lock()
-            .unwrap()
-            .get(&id)
-            .map(|i| (i.path.clone(), i.filename.clone()))
+        match self.items.lock() {
+            Ok(m) => m.get(&id).map(|i| (i.path.clone(), i.filename.clone())),
+            Err(e) => e.into_inner().get(&id).map(|i| (i.path.clone(), i.filename.clone())),
+        }
     }
 
     /// Delete downloads created more than `max_age_secs` ago. Returns the count.
     pub fn remove_expired(&self, max_age_secs: u64) -> usize {
         let now = now();
-        let expired: Vec<usize> = self
-            .items
-            .lock()
-            .unwrap()
-            .iter()
-            .filter(|(_, i)| now.saturating_sub(i.created) > max_age_secs)
-            .map(|(id, _)| *id)
-            .collect();
+        let expired = match self.items.lock() {
+            Ok(m) => m
+                .iter()
+                .filter(|(_, i)| now.saturating_sub(i.created) > max_age_secs)
+                .map(|(id, _)| *id)
+                .collect(),
+            Err(e) => e.into_inner()
+                .iter()
+                .filter(|(_, i)| now.saturating_sub(i.created) > max_age_secs)
+                .map(|(id, _)| *id)
+                .collect(),
+        };
         for id in &expired {
             let _ = self.delete(*id, true);
         }
@@ -230,14 +277,24 @@ impl DirectManager {
 
     /// Remove all finished downloads (and their files). Returns the count.
     pub fn clear_completed(&self) -> usize {
-        let done: Vec<usize> = self
-            .items
-            .lock()
-            .unwrap()
-            .iter()
-            .filter(|(_, i)| *i.phase.lock().unwrap() == Phase::Done)
-            .map(|(id, _)| *id)
-            .collect();
+        let done = match self.items.lock() {
+            Ok(m) => m
+                .iter()
+                .filter(|(_, i)| match i.phase.lock() {
+                    Ok(m) => *m == Phase::Done,
+                    Err(e) => *e.into_inner() == Phase::Done,
+                })
+                .map(|(id, _)| *id)
+                .collect(),
+            Err(e) => e.into_inner()
+                .iter()
+                .filter(|(_, i)| match i.phase.lock() {
+                    Ok(m) => *m == Phase::Done,
+                    Err(e) => *e.into_inner() == Phase::Done,
+                })
+                .map(|(id, _)| *id)
+                .collect(),
+        };
         for id in &done {
             let _ = self.delete(*id, true);
         }
@@ -245,7 +302,10 @@ impl DirectManager {
     }
 
     pub fn delete(&self, id: usize, files: bool) -> Result<()> {
-        let removed = self.items.lock().unwrap().remove(&id);
+        let removed = match self.items.lock() {
+            Ok(mut m) => m.remove(&id),
+            Err(e) => e.into_inner().remove(&id),
+        };
         if removed.is_none() {
             return Err(anyhow!("no such download"));
         }
@@ -259,13 +319,24 @@ impl DirectManager {
 
 impl Item {
     fn view(&self) -> DirectView {
-        let phase = *self.phase.lock().unwrap();
+        let phase = match self.phase.lock() {
+            Ok(m) => *m,
+            Err(e) => *e.into_inner(),
+        };
+        let total = match self.total.lock() {
+            Ok(m) => *m,
+            Err(e) => *e.into_inner(),
+        };
+        let error = match self.error.lock() {
+            Ok(m) => m.clone(),
+            Err(e) => e.into_inner().clone(),
+        };
         DirectView {
             id: self.id,
             url: self.url.clone(),
             filename: self.filename.clone(),
             owner: self.owner.clone(),
-            total: *self.total.lock().unwrap(),
+            total,
             downloaded: self.downloaded.load(Ordering::Relaxed),
             status: match phase {
                 Phase::Downloading => "downloading",
@@ -273,7 +344,7 @@ impl Item {
                 Phase::Error => "error",
             }
             .to_string(),
-            error: self.error.lock().unwrap().clone(),
+            error,
             created: self.created,
         }
     }
@@ -306,7 +377,10 @@ async fn download(item: &Item) -> Result<()> {
         .context("server returned an error status")?;
 
     if let Some(len) = resp.content_length() {
-        *item.total.lock().unwrap() = Some(len);
+        match item.total.lock() {
+            Ok(mut m) => *m = Some(len),
+            Err(e) => *e.into_inner() = Some(len),
+        };
     }
 
     let mut file = tokio::fs::File::create(&item.path)

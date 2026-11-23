@@ -155,6 +155,11 @@ async fn rss_loop(rss: rss::RssManager, app: engine::App) {
             {
                 continue;
             }
+            // SSRF protection: verify the feed URL resolves to a public IP before fetching
+            if let Err(e) = downloads::verify_public(&feed.url).await {
+                tracing::warn!(feed = %feed.url, error = %e, "rss feed URL rejected (SSRF protection)");
+                continue;
+            }
             let xml = match client.get(&feed.url).send().await {
                 Ok(r) => r.text().await.unwrap_or_default(),
                 Err(e) => {

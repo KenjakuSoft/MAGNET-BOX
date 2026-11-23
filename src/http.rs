@@ -2,9 +2,10 @@
 
 use std::collections::HashMap;
 use std::io::SeekFrom;
+use std::net::IpAddr;
 use std::process::Stdio;
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use axum::{
     body::{Body, Bytes},
@@ -15,6 +16,7 @@ use axum::{
     routing::{get, post},
     Extension, Json, Router,
 };
+use governor::{clock::DefaultClock, state::InMemoryState, Quota, RateLimiter};
 use librqbit::AddTorrent;
 use serde::Deserialize;
 use serde_json::json;
@@ -23,10 +25,18 @@ use tokio::process::{Child, ChildStdout, Command};
 use tokio_util::io::ReaderStream;
 
 use crate::auth::{require_auth, token_from_headers, Auth, Identity, LoginOutcome, Role};
-use crate::downloads::DirectManager;
+use crate::downloads::{DirectManager, verify_public};
 use crate::engine::App;
 use crate::metrics::Metrics;
 use crate::rss::RssManager;
+
+/// Max body size for upload endpoints (10 MB).
+const MAX_UPLOAD_SIZE: usize = 10 * 1024 * 1024;
+
+/// Request size limit layer.
+fn size_limit_layer() -> tower::limit::RequestBodyLimitLayer {
+    tower::limit::RequestBodyLimitLayer::new(MAX_UPLOAD_SIZE)
+}
 
 /// Combined state so handlers can extract either the torrent engine or auth
 /// (via `FromRef`), while existing `State<App>` handlers keep working.
@@ -43,6 +53,32 @@ pub struct AppState {
     ffmpeg: bool,
     /// In-flight transcodes per user, to cap CPU-heavy concurrent conversions.
     transcodes: Arc<Mutex<HashMap<String, usize>>>,
+}
+
+/// Extract client IP for rate limiting keys.
+fn client_ip_for_rate_limit(req: &Request) -> std::net::IpAddr {
+    // Check X-Forwarded-For first (set by reverse proxy)
+    if let Some(xff) = req.headers().get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+    {
+        if let Some(first) = xff.split(',').next().map(|s| s.trim()) {
+            if let Ok(ip) = first.parse() {
+                return ip;
+            }
+        }
+    }
+    // Check X-Real-IP
+    if let Some(xri) = req.headers().get("x-real-ip")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.trim().parse().ok())
+    {
+        return xri;
+    }
+    // Fall back to socket addr (available via extensions in axum)
+    req.extensions()
+        .get::<std::net::SocketAddr>()
+        .map(|s| s.ip())
+        .unwrap_or_else(|| std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1)))
 }
 
 impl FromRef<AppState> for App {
@@ -64,6 +100,45 @@ impl FromRef<AppState> for RssManager {
     fn from_ref(s: &AppState) -> RssManager {
         s.rss.clone()
     }
+}
+
+/// Per-IP rate limiter state for auth endpoints.
+type AuthRateLimiter = Arc<Mutex<HashMap<IpAddr, RateLimiter<DefaultClock, InMemoryState>>>>;
+
+/// Create a new auth rate limiter.
+fn make_auth_rate_limiter() -> AuthRateLimiter {
+    Arc::new(Mutex::new(HashMap::new()))
+}
+
+/// Rate limiting middleware for auth endpoints (10 req/min per IP, burst 5).
+async fn auth_rate_limit_middleware(
+    State(limiter): State<AuthRateLimiter>,
+    req: Request,
+    next: Next,
+) -> Response {
+    let ip = client_ip_for_rate_limit(&req);
+    let limiter = match limiter.lock() {
+        Ok(mut map) => map.entry(ip).or_insert_with(|| {
+            let quota = Quota::per_minute(10).allow_burst(5);
+            RateLimiter::direct(quota)
+        }).clone(),
+        Err(e) => {
+            let mut map = e.into_inner();
+            map.entry(ip).or_insert_with(|| {
+                let quota = Quota::per_minute(10).allow_burst(5);
+                RateLimiter::direct(quota)
+            }).clone()
+        }
+    };
+
+    if limiter.check().is_err() {
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(json!({ "ok": false, "error": "rate limited — try again later" })),
+        ).into_response();
+    }
+
+    next.run(req).await
 }
 
 pub fn router(
@@ -102,7 +177,7 @@ pub fn router(
         .route("/api/settings", get(settings_get).post(settings_set))
         .route("/api/torrents", get(list))
         .route("/api/add", post(add))
-        .route("/api/upload", post(upload))
+        .route("/api/upload", post(upload).layer(size_limit_layer()))
         .route("/api/torrents/:id/files", post(set_files))
         .route("/api/torrents/:id/pause", post(pause))
         .route("/api/torrents/:id/resume", post(resume))
@@ -158,9 +233,11 @@ pub fn router(
         .route("/api/admin/cleanup", post(admin_cleanup))
         .route("/api/admin/rss", get(rss_list).post(rss_add))
         .route("/api/admin/rss/:id/delete", post(rss_delete))
-        .route_layer(middleware::from_fn_with_state(auth, require_auth));
+        .route_layer(middleware::from_fn_with_state(auth.clone(), require_auth));
 
     // Public: first-run setup + login + invite-only registration + PWA assets.
+    // Rate limit auth endpoints to prevent brute force.
+    let auth_rate_limiter = make_auth_rate_limiter();
     let public = Router::new()
         .route("/manifest.webmanifest", get(manifest))
         .route("/sw.js", get(service_worker))
@@ -168,10 +245,16 @@ pub fn router(
         .route("/setup", get(setup_page))
         .route("/api/setup", post(api_setup))
         .route("/login", get(login_page))
-        .route("/api/login", post(api_login))
-        .route("/api/login/2fa", post(api_login_2fa))
+        .route("/api/login", post(api_login).layer(middleware::from_fn_with_state(
+            auth_rate_limiter.clone(),
+            auth_rate_limit_middleware
+        )))
+        .route("/api/login/2fa", post(api_login_2fa).layer(middleware::from_fn_with_state(
+            auth_rate_limiter.clone(),
+            auth_rate_limit_middleware
+        )))
         .route("/register", get(register_page))
-        .route("/api/register", post(api_register))
+        .route("/api/register", post(api_register).layer(size_limit_layer()))
         .route("/api/register/status", get(register_status));
 
     public
@@ -181,7 +264,11 @@ pub fn router(
 }
 
 /// Add hardening headers to every response.
-async fn security_headers(req: Request, next: Next) -> Response {
+async fn security_headers(
+    State(auth): State<Auth>,
+    req: Request,
+    next: Next,
+) -> Response {
     let mut resp = next.run(req).await;
     let h = resp.headers_mut();
     h.insert(
@@ -194,6 +281,13 @@ async fn security_headers(req: Request, next: Next) -> Response {
         "permissions-policy",
         HeaderValue::from_static("camera=(), microphone=(), geolocation=()"),
     );
+    // HSTS: enforce HTTPS when secure cookies are enabled (production behind TLS)
+    if auth.secure_cookie {
+        h.insert(
+            "strict-transport-security",
+            HeaderValue::from_static("max-age=31536000; includeSubDomains; preload"),
+        );
+    }
     // Content-Security-Policy: defense-in-depth. The embedded UI keeps inline
     // scripts/handlers, so script/style allow 'unsafe-inline'; everything else
     // is locked to same-origin, plugins blocked, framing/base/form restricted.
@@ -259,6 +353,13 @@ async fn rss_add(State(rss): State<RssManager>, Json(req): Json<RssAddReq>) -> R
         return err(
             StatusCode::BAD_REQUEST,
             "feed URL must start with http:// or https://",
+        );
+    }
+    // SSRF protection: verify the feed URL resolves to a public IP
+    if let Err(e) = verify_public(&url).await {
+        return err(
+            StatusCode::BAD_REQUEST,
+            &format!("feed URL rejected: {e}"),
         );
     }
     let id = rss.add(url.to_string(), req.filter);
@@ -1138,11 +1239,23 @@ struct TranscodeGuard {
 }
 impl Drop for TranscodeGuard {
     fn drop(&mut self) {
-        let mut m = self.map.lock().unwrap();
-        if let Some(n) = m.get_mut(&self.user) {
-            *n = n.saturating_sub(1);
-            if *n == 0 {
-                m.remove(&self.user);
+        match self.map.lock() {
+            Ok(mut m) => {
+                if let Some(n) = m.get_mut(&self.user) {
+                    *n = n.saturating_sub(1);
+                    if *n == 0 {
+                        m.remove(&self.user);
+                    }
+                }
+            }
+            Err(e) => {
+                let mut m = e.into_inner();
+                if let Some(n) = m.get_mut(&self.user) {
+                    *n = n.saturating_sub(1);
+                    if *n == 0 {
+                        m.remove(&self.user);
+                    }
+                }
             }
         }
     }
@@ -1150,16 +1263,31 @@ impl Drop for TranscodeGuard {
 
 /// Reserve a transcode slot for `user`, or `None` if already at the cap.
 fn acquire_transcode(state: &AppState, user: &str) -> Option<TranscodeGuard> {
-    let mut m = state.transcodes.lock().unwrap();
-    let n = m.entry(user.to_string()).or_insert(0);
-    if *n >= MAX_TRANSCODES_PER_USER {
-        return None;
+    match state.transcodes.lock() {
+        Ok(mut m) => {
+            let n = m.entry(user.to_string()).or_insert(0);
+            if *n >= MAX_TRANSCODES_PER_USER {
+                return None;
+            }
+            *n += 1;
+            Some(TranscodeGuard {
+                map: state.transcodes.clone(),
+                user: user.to_string(),
+            })
+        }
+        Err(e) => {
+            let mut m = e.into_inner();
+            let n = m.entry(user.to_string()).or_insert(0);
+            if *n >= MAX_TRANSCODES_PER_USER {
+                return None;
+            }
+            *n += 1;
+            Some(TranscodeGuard {
+                map: state.transcodes.clone(),
+                user: user.to_string(),
+            })
+        }
     }
-    *n += 1;
-    Some(TranscodeGuard {
-        map: state.transcodes.clone(),
-        user: user.to_string(),
-    })
 }
 
 /// Transcode a torrent file: pipe its piece-aware stream (which blocks until

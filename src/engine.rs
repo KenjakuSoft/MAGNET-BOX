@@ -12,6 +12,26 @@ use librqbit::{AddTorrent, AddTorrentOptions, ManagedTorrent, Session};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+/// Sanitize error messages to avoid leaking internal details (paths, IPs, stack traces).
+fn sanitize_error(e: &anyhow::Error) -> String {
+    let msg = e.to_string();
+    // Truncate very long messages
+    if msg.len() > 200 {
+        return "torrent add failed".to_string();
+    }
+    // Remove potential internal paths
+    let msg = msg
+        .replace("/home/", "")
+        .replace("/Users/", "")
+        .replace("C:\\", "")
+        .replace("\\", "/");
+    // Generic fallback for messages that look like stack traces
+    if msg.contains("at ") && msg.contains(":") && msg.lines().count() > 3 {
+        return "torrent add failed".to_string();
+    }
+    msg
+}
+
 /// `librqbit`'s handle alias isn't re-exported at the crate root, so define it.
 type ManagedTorrentHandle = Arc<ManagedTorrent>;
 
@@ -99,9 +119,18 @@ impl App {
         {
             let reg = registry.clone();
             session.with_torrents(|it| {
-                let mut g = reg.lock().unwrap();
-                for (_id, handle) in it {
-                    g.insert(handle.id(), handle.clone());
+                match reg.lock() {
+                    Ok(mut g) => {
+                        for (_id, handle) in it {
+                            g.insert(handle.id(), handle.clone());
+                        }
+                    }
+                    Err(e) => {
+                        let mut g = e.into_inner();
+                        for (_id, handle) in it {
+                            g.insert(handle.id(), handle.clone());
+                        }
+                    }
                 }
             });
         }
@@ -134,19 +163,34 @@ impl App {
             .and_then(|d| serde_json::from_slice(&d).ok())
             .unwrap_or_default();
         let now = now_secs();
-        let ids: Vec<usize> = self.registry.lock().unwrap().keys().copied().collect();
-        {
-            let mut added = self.added.lock().unwrap();
-            *added = loaded;
-            for id in ids {
-                added.entry(id).or_insert(now);
+        let ids = match self.registry.lock() {
+            Ok(m) => m.keys().copied().collect(),
+            Err(e) => e.into_inner().keys().copied().collect(),
+        };
+        match self.added.lock() {
+            Ok(mut added) => {
+                *added = loaded;
+                for id in ids {
+                    added.entry(id).or_insert(now);
+                }
+            }
+            Err(e) => {
+                let mut added = e.into_inner();
+                *added = loaded;
+                for id in ids {
+                    added.entry(id).or_insert(now);
+                }
             }
         }
         self.save_added();
     }
 
     fn save_added(&self) {
-        if let Ok(bytes) = serde_json::to_vec(&*self.added.lock().unwrap()) {
+        let added = match self.added.lock() {
+            Ok(m) => m,
+            Err(e) => e.into_inner(),
+        };
+        if let Ok(bytes) = serde_json::to_vec(&*added) {
             let _ = std::fs::write(&self.added_path, bytes);
         }
     }
@@ -154,20 +198,21 @@ impl App {
     /// Delete torrents added more than `max_age_secs` ago (with their files).
     pub async fn remove_expired(&self, max_age_secs: u64) -> usize {
         let now = now_secs();
-        let expired: Vec<usize> = {
-            let added = self.added.lock().unwrap();
-            self.registry
-                .lock()
-                .unwrap()
-                .keys()
-                .filter(|id| {
-                    added
-                        .get(id)
-                        .is_some_and(|t| now.saturating_sub(*t) > max_age_secs)
-                })
-                .copied()
-                .collect()
+        let (added, registry) = match (self.added.lock(), self.registry.lock()) {
+            (Ok(a), Ok(r)) => (a, r),
+            (Ok(a), Err(e)) => (a, e.into_inner()),
+            (Err(e), Ok(r)) => (e.into_inner(), r),
+            (Err(e1), Err(e2)) => (e1.into_inner(), e2.into_inner()),
         };
+        let expired: Vec<usize> = registry
+            .keys()
+            .filter(|id| {
+                added
+                    .get(id)
+                    .is_some_and(|t| now.saturating_sub(*t) > max_age_secs)
+            })
+            .copied()
+            .collect();
         let mut n = 0;
         for id in expired {
             if self.delete(id, true).await.is_ok() {
@@ -248,13 +293,19 @@ impl App {
                 Ok(Ok(resp)) => match resp.into_handle() {
                     Some(handle) => {
                         let id = handle.id();
-                        this.registry.lock().unwrap().insert(id, handle);
-                        this.added.lock().unwrap().insert(id, now_secs());
+                        match this.registry.lock() {
+                            Ok(mut m) => m.insert(id, handle),
+                            Err(e) => e.into_inner().insert(id, handle),
+                        };
+                        match this.added.lock() {
+                            Ok(mut m) => m.insert(id, now_secs()),
+                            Err(e) => e.into_inner().insert(id, now_secs()),
+                        };
                         this.save_added();
                     }
                     None => this.push_error("torrent was list-only; no download handle".into()),
                 },
-                Ok(Err(e)) => this.push_error(format!("{e:#}")),
+                Ok(Err(e)) => this.push_error(sanitize_error(&e)),
                 Err(_) => this.push_error(
                     "Timed out after 120s resolving the torrent. BitTorrent traffic may be \
                      blocked by a firewall, antivirus, or VPN — allow magnetbox.exe through, \
@@ -267,18 +318,27 @@ impl App {
     }
 
     fn push_error(&self, msg: String) {
-        self.errors.lock().unwrap().push(msg);
+        match self.errors.lock() {
+            Ok(mut m) => m.push(msg),
+            Err(e) => e.into_inner().push(msg),
+        }
     }
 
     /// Count of in-flight adds, plus any errors since the last call (drained).
     pub fn take_status(&self) -> (usize, Vec<String>) {
         let pending = self.pending.load(Ordering::Relaxed);
-        let errors = std::mem::take(&mut *self.errors.lock().unwrap());
+        let errors = match self.errors.lock() {
+            Ok(mut m) => std::mem::take(&mut *m),
+            Err(e) => std::mem::take(&mut *e.into_inner()),
+        };
         (pending, errors)
     }
 
     pub fn get(&self, id: usize) -> Option<ManagedTorrentHandle> {
-        self.registry.lock().unwrap().get(&id).cloned()
+        match self.registry.lock() {
+            Ok(m) => m.get(&id).cloned(),
+            Err(e) => e.into_inner().get(&id).cloned(),
+        }
     }
 
     /// Choose exactly which files to download. An empty set deselects all.
@@ -303,8 +363,10 @@ impl App {
 
     /// Aggregate stats for the admin overview.
     pub fn summary(&self) -> serde_json::Value {
-        let handles: Vec<ManagedTorrentHandle> =
-            self.registry.lock().unwrap().values().cloned().collect();
+        let handles = match self.registry.lock() {
+            Ok(m) => m.values().cloned().collect(),
+            Err(e) => e.into_inner().values().cloned().collect(),
+        };
         let (mut active, mut paused, mut finished) = (0, 0, 0);
         let (mut downloaded, mut uploaded) = (0u64, 0u64);
         let mut download_mbps = 0.0;
@@ -336,16 +398,20 @@ impl App {
     }
 
     pub async fn pause_all(&self) {
-        let handles: Vec<ManagedTorrentHandle> =
-            self.registry.lock().unwrap().values().cloned().collect();
+        let handles = match self.registry.lock() {
+            Ok(m) => m.values().cloned().collect(),
+            Err(e) => e.into_inner().values().cloned().collect(),
+        };
         for h in handles {
             let _ = self.session.pause(&h).await;
         }
     }
 
     pub async fn resume_all(&self) {
-        let handles: Vec<ManagedTorrentHandle> =
-            self.registry.lock().unwrap().values().cloned().collect();
+        let handles = match self.registry.lock() {
+            Ok(m) => m.values().cloned().collect(),
+            Err(e) => e.into_inner().values().cloned().collect(),
+        };
         for h in handles {
             let _ = self.session.unpause(&h).await;
         }
@@ -358,15 +424,23 @@ impl App {
             .delete(librqbit::api::TorrentIdOrHash::Id(id), delete_files)
             .await
             .context("delete failed")?;
-        self.registry.lock().unwrap().remove(&id);
-        self.added.lock().unwrap().remove(&id);
+        match self.registry.lock() {
+            Ok(mut m) => m.remove(&id),
+            Err(e) => e.into_inner().remove(&id),
+        };
+        match self.added.lock() {
+            Ok(mut m) => m.remove(&id),
+            Err(e) => e.into_inner().remove(&id),
+        };
         self.save_added();
         Ok(())
     }
 
     pub fn list(&self) -> Vec<TorrentView> {
-        let handles: Vec<ManagedTorrentHandle> =
-            { self.registry.lock().unwrap().values().cloned().collect() };
+        let handles = match self.registry.lock() {
+            Ok(m) => m.values().cloned().collect(),
+            Err(e) => e.into_inner().values().cloned().collect(),
+        };
         let mut out: Vec<TorrentView> = handles.iter().map(view).collect();
         out.sort_by_key(|v| v.id);
         out
