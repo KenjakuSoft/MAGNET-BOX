@@ -163,7 +163,7 @@ impl App {
             .and_then(|d| serde_json::from_slice(&d).ok())
             .unwrap_or_default();
         let now = now_secs();
-        let ids = match self.registry.lock() {
+        let ids: Vec<usize> = match self.registry.lock() {
             Ok(m) => m.keys().copied().collect(),
             Err(e) => e.into_inner().keys().copied().collect(),
         };
@@ -198,21 +198,23 @@ impl App {
     /// Delete torrents added more than `max_age_secs` ago (with their files).
     pub async fn remove_expired(&self, max_age_secs: u64) -> usize {
         let now = now_secs();
-        let (added, registry) = match (self.added.lock(), self.registry.lock()) {
-            (Ok(a), Ok(r)) => (a, r),
-            (Ok(a), Err(e)) => (a, e.into_inner()),
-            (Err(e), Ok(r)) => (e.into_inner(), r),
-            (Err(e1), Err(e2)) => (e1.into_inner(), e2.into_inner()),
+        let expired: Vec<usize> = {
+            let (added, registry) = match (self.added.lock(), self.registry.lock()) {
+                (Ok(a), Ok(r)) => (a, r),
+                (Ok(a), Err(e)) => (a, e.into_inner()),
+                (Err(e), Ok(r)) => (e.into_inner(), r),
+                (Err(e1), Err(e2)) => (e1.into_inner(), e2.into_inner()),
+            };
+            registry
+                .keys()
+                .filter(|id| {
+                    added
+                        .get(id)
+                        .is_some_and(|t| now.saturating_sub(*t) > max_age_secs)
+                })
+                .copied()
+                .collect()
         };
-        let expired: Vec<usize> = registry
-            .keys()
-            .filter(|id| {
-                added
-                    .get(id)
-                    .is_some_and(|t| now.saturating_sub(*t) > max_age_secs)
-            })
-            .copied()
-            .collect();
         let mut n = 0;
         for id in expired {
             if self.delete(id, true).await.is_ok() {
@@ -363,7 +365,7 @@ impl App {
 
     /// Aggregate stats for the admin overview.
     pub fn summary(&self) -> serde_json::Value {
-        let handles = match self.registry.lock() {
+        let handles: Vec<ManagedTorrentHandle> = match self.registry.lock() {
             Ok(m) => m.values().cloned().collect(),
             Err(e) => e.into_inner().values().cloned().collect(),
         };
@@ -398,7 +400,7 @@ impl App {
     }
 
     pub async fn pause_all(&self) {
-        let handles = match self.registry.lock() {
+        let handles: Vec<_> = match self.registry.lock() {
             Ok(m) => m.values().cloned().collect(),
             Err(e) => e.into_inner().values().cloned().collect(),
         };
@@ -408,7 +410,7 @@ impl App {
     }
 
     pub async fn resume_all(&self) {
-        let handles = match self.registry.lock() {
+        let handles: Vec<_> = match self.registry.lock() {
             Ok(m) => m.values().cloned().collect(),
             Err(e) => e.into_inner().values().cloned().collect(),
         };
@@ -437,7 +439,7 @@ impl App {
     }
 
     pub fn list(&self) -> Vec<TorrentView> {
-        let handles = match self.registry.lock() {
+        let handles: Vec<ManagedTorrentHandle> = match self.registry.lock() {
             Ok(m) => m.values().cloned().collect(),
             Err(e) => e.into_inner().values().cloned().collect(),
         };

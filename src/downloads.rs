@@ -168,14 +168,14 @@ impl DirectManager {
         match self.items.lock() {
             Ok(m) => m
                 .values()
-                .filter(|i| match i.phase.lock() {
+                .filter(|i| i.owner == owner && match i.phase.lock() {
                     Ok(m) => *m == Phase::Downloading,
                     Err(e) => *e.into_inner() == Phase::Downloading,
                 })
                 .count(),
             Err(e) => e.into_inner()
                 .values()
-                .filter(|i| match i.phase.lock() {
+                .filter(|i| i.owner == owner && match i.phase.lock() {
                     Ok(m) => *m == Phase::Downloading,
                     Err(e) => *e.into_inner() == Phase::Downloading,
                 })
@@ -206,8 +206,12 @@ impl DirectManager {
             error: Mutex::new(None),
         });
         match self.items.lock() {
-            Ok(mut m) => m.insert(id, item.clone()),
-            Err(e) => e.into_inner().insert(id, item.clone()),
+            Ok(mut m) => {
+                m.insert(id, item.clone());
+            }
+            Err(e) => {
+                e.into_inner().insert(id, item.clone());
+            }
         }
 
         let mgr = self.clone();
@@ -220,15 +224,16 @@ impl DirectManager {
                     };
                     mgr.persist();
                 }
-                Err(e) => {
+                Err(dl_err) => {
                     // Top-level message only — don't surface the internal context chain.
+                    let msg = sanitize_error(&dl_err);
                     match item.error.lock() {
-                        Ok(mut m) => *m = Some(sanitize_error(&e)),
-                        Err(e) => *e.into_inner() = Some(sanitize_error(&e)),
+                        Ok(mut m) => *m = Some(msg.clone()),
+                        Err(poison) => *poison.into_inner() = Some(msg),
                     };
                     match item.phase.lock() {
                         Ok(mut m) => *m = Phase::Error,
-                        Err(e) => *e.into_inner() = Phase::Error,
+                        Err(poison) => *poison.into_inner() = Phase::Error,
                     };
                 }
             }
@@ -257,7 +262,7 @@ impl DirectManager {
     /// Delete downloads created more than `max_age_secs` ago. Returns the count.
     pub fn remove_expired(&self, max_age_secs: u64) -> usize {
         let now = now();
-        let expired = match self.items.lock() {
+        let expired: Vec<usize> = match self.items.lock() {
             Ok(m) => m
                 .iter()
                 .filter(|(_, i)| now.saturating_sub(i.created) > max_age_secs)
@@ -277,7 +282,7 @@ impl DirectManager {
 
     /// Remove all finished downloads (and their files). Returns the count.
     pub fn clear_completed(&self) -> usize {
-        let done = match self.items.lock() {
+        let done: Vec<usize> = match self.items.lock() {
             Ok(m) => m
                 .iter()
                 .filter(|(_, i)| match i.phase.lock() {
@@ -401,7 +406,7 @@ async fn download(item: &Item) -> Result<()> {
 /// private/loopback/link-local/etc. address (blocks localhost, internal hosts,
 /// and cloud metadata like 169.254.169.254). Returns the verified public
 /// addresses so the caller can pin the connection to them.
-async fn verify_public(raw: &str) -> Result<Vec<SocketAddr>> {
+pub async fn verify_public(raw: &str) -> Result<Vec<SocketAddr>> {
     let url = Url::parse(raw).map_err(|_| anyhow!("invalid URL"))?;
     if !matches!(url.scheme(), "http" | "https") {
         return Err(anyhow!("only http(s) URLs are allowed"));

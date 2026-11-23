@@ -5,7 +5,7 @@ use std::io::SeekFrom;
 use std::net::IpAddr;
 use std::process::Stdio;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use axum::{
     body::{Body, Bytes},
@@ -16,7 +16,6 @@ use axum::{
     routing::{get, post},
     Extension, Json, Router,
 };
-use governor::{clock::DefaultClock, state::InMemoryState, Quota, RateLimiter};
 use librqbit::AddTorrent;
 use serde::Deserialize;
 use serde_json::json;
@@ -34,8 +33,8 @@ use crate::rss::RssManager;
 const MAX_UPLOAD_SIZE: usize = 10 * 1024 * 1024;
 
 /// Request size limit layer.
-fn size_limit_layer() -> tower::limit::RequestBodyLimitLayer {
-    tower::limit::RequestBodyLimitLayer::new(MAX_UPLOAD_SIZE)
+fn size_limit_layer() -> tower_http::limit::RequestBodyLimitLayer {
+    tower_http::limit::RequestBodyLimitLayer::new(MAX_UPLOAD_SIZE)
 }
 
 /// Combined state so handlers can extract either the torrent engine or auth
@@ -102,36 +101,55 @@ impl FromRef<AppState> for RssManager {
     }
 }
 
-/// Per-IP rate limiter state for auth endpoints.
-type AuthRateLimiter = Arc<Mutex<HashMap<IpAddr, RateLimiter<DefaultClock, InMemoryState>>>>;
+/// Simple per-IP fixed-window rate limiter state: `AUTH_WINDOW_MAX` requests
+/// per `AUTH_WINDOW_SECS`, with a small burst allowance.
+const AUTH_WINDOW_SECS: u64 = 60;
+const AUTH_BURST: u32 = 5;
+type AuthRateLimiter = Arc<Mutex<HashMap<IpAddr, (u32, std::time::SystemTime)>>>;
 
 /// Create a new auth rate limiter.
 fn make_auth_rate_limiter() -> AuthRateLimiter {
     Arc::new(Mutex::new(HashMap::new()))
 }
 
-/// Rate limiting middleware for auth endpoints (10 req/min per IP, burst 5).
+/// Rate limiting middleware for auth endpoints.
 async fn auth_rate_limit_middleware(
     State(limiter): State<AuthRateLimiter>,
     req: Request,
     next: Next,
 ) -> Response {
     let ip = client_ip_for_rate_limit(&req);
-    let limiter = match limiter.lock() {
-        Ok(mut map) => map.entry(ip).or_insert_with(|| {
-            let quota = Quota::per_minute(10).allow_burst(5);
-            RateLimiter::direct(quota)
-        }).clone(),
+    let now = std::time::SystemTime::now();
+    let allowed = match limiter.lock() {
+        Ok(mut map) => {
+            let entry = map.entry(ip).or_insert((0, now));
+            if now.duration_since(entry.1).map(|d| d.as_secs()).unwrap_or(u64::MAX) >= AUTH_WINDOW_SECS {
+                // New window: reset with burst allowance.
+                *entry = (AUTH_BURST, now);
+            }
+            if entry.0 > 0 {
+                entry.0 -= 1;
+                true
+            } else {
+                false
+            }
+        }
         Err(e) => {
             let mut map = e.into_inner();
-            map.entry(ip).or_insert_with(|| {
-                let quota = Quota::per_minute(10).allow_burst(5);
-                RateLimiter::direct(quota)
-            }).clone()
+            let entry = map.entry(ip).or_insert((0, now));
+            if now.duration_since(entry.1).map(|d| d.as_secs()).unwrap_or(u64::MAX) >= AUTH_WINDOW_SECS {
+                *entry = (AUTH_BURST, now);
+            }
+            if entry.0 > 0 {
+                entry.0 -= 1;
+                true
+            } else {
+                false
+            }
         }
     };
 
-    if limiter.check().is_err() {
+    if !allowed {
         return (
             StatusCode::TOO_MANY_REQUESTS,
             Json(json!({ "ok": false, "error": "rate limited — try again later" })),
@@ -259,7 +277,7 @@ pub fn router(
 
     public
         .merge(protected)
-        .layer(middleware::from_fn(security_headers))
+        .layer(middleware::from_fn_with_state(auth, security_headers))
         .with_state(state)
 }
 
@@ -282,7 +300,7 @@ async fn security_headers(
         HeaderValue::from_static("camera=(), microphone=(), geolocation=()"),
     );
     // HSTS: enforce HTTPS when secure cookies are enabled (production behind TLS)
-    if auth.secure_cookie {
+    if auth.secure_cookie() {
         h.insert(
             "strict-transport-security",
             HeaderValue::from_static("max-age=31536000; includeSubDomains; preload"),
@@ -903,7 +921,7 @@ async fn serve(app: App, id: usize, file: usize, headers: HeaderMap, attachment:
         return err(StatusCode::NOT_FOUND, "no such file (metadata not ready?)");
     };
     let base = basename(&rel_name);
-    let file_stream = match handle.clone().stream(file) {
+    let file_stream = match handle.clone().stream(file).await {
         Ok(s) => s,
         Err(e) => {
             tracing::error!(torrent = id, file, error = %format!("{e:#}"), "stream open failed");
@@ -1040,7 +1058,7 @@ async fn subtitle(State(app): State<App>, Path((id, file)): Path<(usize, usize)>
     let Some(handle) = app.get(id) else {
         return err(StatusCode::NOT_FOUND, "no such torrent");
     };
-    let stream = match handle.clone().stream(file) {
+    let stream = match handle.clone().stream(file).await {
         Ok(s) => s,
         Err(e) => {
             tracing::error!(torrent = id, file, error = %format!("{e:#}"), "subtitle stream open failed");
@@ -1315,7 +1333,7 @@ async fn transcode(
     if state.engine.file_name(id, file).is_none() {
         return err(StatusCode::NOT_FOUND, "no such file (metadata not ready?)");
     }
-    let stream = match handle.clone().stream(file) {
+    let stream = match handle.clone().stream(file).await {
         Ok(s) => s,
         Err(e) => {
             tracing::error!(torrent = id, file, error = %format!("{e:#}"), "transcode stream open failed");

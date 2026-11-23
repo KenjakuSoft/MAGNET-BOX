@@ -14,7 +14,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use anyhow::{anyhow, Context, Result};
 use argon2::password_hash::rand_core::{OsRng, RngCore};
 use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
-use argon2::{Algorithm, Argon2, Params, Version};
+use argon2::{Algorithm as ArgonAlgorithm, Argon2, Params, Version};
 use axum::{
     extract::{Request, State},
     http::{header, HeaderMap, StatusCode},
@@ -24,7 +24,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
-use totp_rs::{Algorithm, Secret, TOTP};
+use totp_rs::{Algorithm as TotpAlgorithm, Secret, TOTP};
 
 const COOKIE: &str = "mb_session";
 const SESSION_TTL: Duration = Duration::from_secs(60 * 60 * 24 * 7); // 7 days
@@ -1327,13 +1327,6 @@ impl Auth {
                 entry.0 += 1;
             }
         };
-        let entry = t
-            .entry(username.to_string())
-            .or_insert((0, SystemTime::now()));
-        if entry.1.elapsed().unwrap_or_default() > FAIL_WINDOW {
-            *entry = (0, SystemTime::now());
-        }
-        entry.0 += 1;
     }
 
     pub fn session(&self, token: &str) -> Option<Identity> {
@@ -1368,8 +1361,12 @@ impl Auth {
 
     pub fn logout(&self, token: &str) {
         match self.sessions.lock() {
-            Ok(mut m) => m.remove(token),
-            Err(e) => e.into_inner().remove(token),
+            Ok(mut m) => {
+                m.remove(token);
+            }
+            Err(e) => {
+                e.into_inner().remove(token);
+            }
         }
     }
 
@@ -1469,11 +1466,14 @@ pub fn token_from_headers(headers: &HeaderMap) -> Option<String> {
 }
 
 // Argon2id parameters: m=65536 KiB (64 MiB), t=3 iterations, p=4 lanes
-const ARGON2_PARAMS: Params = Params::new(65536, 3, 4, None).expect("valid argon2 params");
+fn argon2_params() -> Params {
+    // Values are constants; new() can only fail on malformed constants.
+    Params::new(65536, 3, 4, None).expect("valid argon2 params")
+}
 
 fn hash_password(pw: &str) -> Result<String> {
     let salt = SaltString::generate(&mut OsRng);
-    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, ARGON2_PARAMS);
+    let argon2 = Argon2::new(ArgonAlgorithm::Argon2id, Version::V0x13, argon2_params());
     Ok(argon2
         .hash_password(pw.as_bytes(), &salt)
         .map_err(|e| anyhow!("password hashing failed: {e}"))?
@@ -1490,7 +1490,7 @@ fn dummy_hash() -> &'static str {
 fn verify_password(pw: &str, hash: &str) -> bool {
     match PasswordHash::new(hash) {
         Ok(parsed) => {
-            let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, ARGON2_PARAMS);
+            let argon2 = Argon2::new(ArgonAlgorithm::Argon2id, Version::V0x13, argon2_params());
             argon2.verify_password(pw.as_bytes(), &parsed).is_ok()
         }
         Err(_) => false,
@@ -1510,7 +1510,7 @@ fn make_totp(secret_b32: &str, account: &str) -> Result<TOTP> {
         .to_bytes()
         .map_err(|_| anyhow!("invalid TOTP secret"))?;
     TOTP::new(
-        Algorithm::SHA1,
+        TotpAlgorithm::SHA1,
         6,
         1,
         30,

@@ -51,20 +51,23 @@ impl Metrics {
                     };
                     let (disk_total, disk_avail) = disk_for(&download_dir);
 
-                    if let Ok(mut h) = handle.lock() {
-                        h.cpu = cpu;
-                        h.mem_used = sys.used_memory();
-                        h.mem_total = sys.total_memory();
-                        h.disk_total = disk_total;
-                        h.disk_used = disk_total.saturating_sub(disk_avail);
-                    } else {
-                        // Lock was poisoned, recover by taking the poisoned data
-                        let mut h = handle.poisoned().into_inner();
-                        h.cpu = cpu;
-                        h.mem_used = sys.used_memory();
-                        h.mem_total = sys.total_memory();
-                        h.disk_total = disk_total;
-                        h.disk_used = disk_total.saturating_sub(disk_avail);
+                    match handle.lock() {
+                        Ok(mut h) => {
+                            h.cpu = cpu;
+                            h.mem_used = sys.used_memory();
+                            h.mem_total = sys.total_memory();
+                            h.disk_total = disk_total;
+                            h.disk_used = disk_total.saturating_sub(disk_avail);
+                        }
+                        Err(e) => {
+                            // Lock was poisoned, recover by taking the poisoned data
+                            let mut h = e.into_inner();
+                            h.cpu = cpu;
+                            h.mem_used = sys.used_memory();
+                            h.mem_total = sys.total_memory();
+                            h.disk_total = disk_total;
+                            h.disk_used = disk_total.saturating_sub(disk_avail);
+                        }
                     }
                     std::thread::sleep(Duration::from_secs(2));
                 }
